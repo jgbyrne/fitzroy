@@ -1,7 +1,7 @@
 use beagle;
 
 #[derive(Debug)]
-pub struct Node {
+pub struct TreeNode {
     pub id: usize,
     pub parent: usize,
     pub lchild: usize,
@@ -11,7 +11,7 @@ pub struct Node {
 
 #[derive(Debug)]
 pub struct Tree {
-    pub nodes: Vec<Node>,
+    pub nodes: Vec<TreeNode>,
 }
 
 impl Tree {

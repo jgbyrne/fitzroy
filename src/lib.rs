@@ -1,5 +1,6 @@
 extern crate beagle;
 mod tree;
+mod newick;
 
 #[cfg(test)]
 mod tests {
