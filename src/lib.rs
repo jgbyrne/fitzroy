@@ -1,89 +1,29 @@
 extern crate beagle;
-mod tree;
-mod newick;
+//use rand::Rng;
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn test_beagle_partial_tips() {
+mod test;
 
-        let human_str: &str = "AGAAATATGTCTGATAAAAGAGTTACTTTGATAGAGTAAATAATAGGAGCTTAAACCCCCTTATTTCTACTAGGACTATGAGAATCGAACCCATCCCTGAGAATCCAAAATTCTCCGTGCCACCTATCACACCCCATCCTAAGTAAGGTCAGCTAAATAAGCTATCGGGCCCATACCCCGAAAATGTTGGTTATACCCTTCCCGTACTAAGAAATTTAGGTTAAATACAGACCAAGAGCCTTCAAAGCCCTCAGTAAGTTG-CAATACTTAATTTCTGTAAGGACTGCAAAACCCCACTCTGCATCAACTGAACGCAAATCAGCCACTTTAATTAAGCTAAGCCCTTCTAGACCAATGGGACTTAAACCCACAAACACTTAGTTAACAGCTAAGCACCCTAATCAAC-TGGCTTCAATCTAAAGCCCCGGCAGG-TTTGAAGCTGCTTCTTCGAATTTGCAATTCAATATGAAAA-TCACCTCGGAGCTTGGTAAAAAGAGGCCTAACCCCTGTCTTTAGATTTACAGTCCAATGCTTCA-CTCAGCCATTTTACCACAAAAAAGGAAGGAATCGAACCCCCCAAAGCTGGTTTCAAGCCAACCCCATGGCCTCCATGACTTTTTCAAAAGGTATTAGAAAAACCATTTCATAACTTTGTCAAAGTTAAATTATAGGCT-AAATCCTATATATCTTA-CACTGTAAAGCTAACTTAGCATTAACCTTTTAAGTTAAAGATTAAGAGAACCAACACCTCTTTACAGTGA";
-        let chimp_str: &str = "AGAAATATGTCTGATAAAAGAATTACTTTGATAGAGTAAATAATAGGAGTTCAAATCCCCTTATTTCTACTAGGACTATAAGAATCGAACTCATCCCTGAGAATCCAAAATTCTCCGTGCCACCTATCACACCCCATCCTAAGTAAGGTCAGCTAAATAAGCTATCGGGCCCATACCCCGAAAATGTTGGTTACACCCTTCCCGTACTAAGAAATTTAGGTTAAGCACAGACCAAGAGCCTTCAAAGCCCTCAGCAAGTTA-CAATACTTAATTTCTGTAAGGACTGCAAAACCCCACTCTGCATCAACTGAACGCAAATCAGCCACTTTAATTAAGCTAAGCCCTTCTAGATTAATGGGACTTAAACCCACAAACATTTAGTTAACAGCTAAACACCCTAATCAAC-TGGCTTCAATCTAAAGCCCCGGCAGG-TTTGAAGCTGCTTCTTCGAATTTGCAATTCAATATGAAAA-TCACCTCAGAGCTTGGTAAAAAGAGGCTTAACCCCTGTCTTTAGATTTACAGTCCAATGCTTCA-CTCAGCCATTTTACCACAAAAAAGGAAGGAATCGAACCCCCTAAAGCTGGTTTCAAGCCAACCCCATGACCTCCATGACTTTTTCAAAAGATATTAGAAAAACTATTTCATAACTTTGTCAAAGTTAAATTACAGGTT-AACCCCCGTATATCTTA-CACTGTAAAGCTAACCTAGCATTAACCTTTTAAGTTAAAGATTAAGAGGACCGACACCTCTTTACAGTGA";
-        let gorilla_str: &str = "AGAAATATGTCTGATAAAAGAGTTACTTTGATAGAGTAAATAATAGAGGTTTAAACCCCCTTATTTCTACTAGGACTATGAGAATTGAACCCATCCCTGAGAATCCAAAATTCTCCGTGCCACCTGTCACACCCCATCCTAAGTAAGGTCAGCTAAATAAGCTATCGGGCCCATACCCCGAAAATGTTGGTCACATCCTTCCCGTACTAAGAAATTTAGGTTAAACATAGACCAAGAGCCTTCAAAGCCCTTAGTAAGTTA-CAACACTTAATTTCTGTAAGGACTGCAAAACCCTACTCTGCATCAACTGAACGCAAATCAGCCACTTTAATTAAGCTAAGCCCTTCTAGATCAATGGGACTCAAACCCACAAACATTTAGTTAACAGCTAAACACCCTAGTCAAC-TGGCTTCAATCTAAAGCCCCGGCAGG-TTTGAAGCTGCTTCTTCGAATTTGCAATTCAATATGAAAT-TCACCTCGGAGCTTGGTAAAAAGAGGCCCAGCCTCTGTCTTTAGATTTACAGTCCAATGCCTTA-CTCAGCCATTTTACCACAAAAAAGGAAGGAATCGAACCCCCCAAAGCTGGTTTCAAGCCAACCCCATGACCTTCATGACTTTTTCAAAAGATATTAGAAAAACTATTTCATAACTTTGTCAAGGTTAAATTACGGGTT-AAACCCCGTATATCTTA-CACTGTAAAGCTAACCTAGCGTTAACCTTTTAAGTTAAAGATTAAGAGTATCGGCACCTCTTTGCAGTGA";
+pub mod cfg;
+pub mod params;
+pub mod tree;
+//pub mod newick;
+pub mod nexus;
 
-        let partial_seq = |seq: &str| {
-            let mut partials: Vec<f64> = vec![];
-            for c in seq.chars() {
-                match c {
-                    'A' => partials.extend_from_slice(&[1.0,0.0,0.0,0.0]),
-                    'C' => partials.extend_from_slice(&[0.0,1.0,0.0,0.0]),
-                    'G' => partials.extend_from_slice(&[0.0,0.0,1.0,0.0]),
-                    'T' => partials.extend_from_slice(&[0.0,0.0,0.0,1.0]),
-                    _   => partials.extend_from_slice(&[1.0,1.0,1.0,1.0]),
-                }
-            }
-            partials
-        };
+pub struct Engine {
+    inst: beagle::Instance,
+}
 
-        let model = beagle::Model {
-            state_freqs: vec![0.25, 0.25, 0.25, 0.25],
-            
-            eigenvalues: vec![
-                0.0,
-                -1.3333333333333333,
-                -1.3333333333333333,
-                -1.3333333333333333
-            ],
+pub struct MCMC {
+    config: cfg::Configuration,
+    params: params::Parameters,
+    engine: Engine,
+}
 
-            eigenvectors: vec![
-                1.0,  2.0,  0.0,  0.5,
-                1.0,  -2.0,  0.5,  0.0,
-                1.0,  2.0, 0.0,  -0.5,
-                1.0,  -2.0,  -0.5,  0.0
-            ],
+impl MCMC {
+    pub fn new(config: cfg::Configuration) -> Self {
 
-            inv_eigenvectors: vec![
-                0.25,  0.25,  0.25,  0.25,
-                0.125,  -0.125,  0.125,  -0.125,
-                0.0,  1.0,  0.0,  -1.0,
-                1.0,  0.0,  -1.0,  0.0
-            ],
-
-            category_rates: vec![0.03338775, 0.25191592, 0.82026848, 2.89442785],
-            category_probs: vec![0.25, 0.25, 0.25, 0.25],
-        };
-
-        let mut inst = beagle::Instance::new(4, human_str.len() as i32, 4, 5, 3, true, vec![model]);
-        inst.set_tip_data_partial(0, partial_seq(human_str));
-        inst.set_tip_data_partial(1, partial_seq(chimp_str));
-        inst.set_tip_data_partial(2, partial_seq(gorilla_str));
-
-        inst.update_matrices(0, vec![0.1, 0.1, 0.2, 0.1]);
-
-        let ops = vec![
-        beagle::sys::Operation {
-            destinationPartials: 3,
-            destinationScaleWrite: -1, //OP_NONE
-            destinationScaleRead: -1, //OP_NONE
-            child1Partials: 0,
-            child1TransitionMatrix: 0,
-            child2Partials: 1,
-            child2TransitionMatrix: 1,
-        },
-        beagle::sys::Operation {
-            destinationPartials: 4,
-            destinationScaleWrite: -1, //OP_NONE
-            destinationScaleRead: -1, //OP_NONE
-            child1Partials: 2,
-            child1TransitionMatrix: 2,
-            child2Partials: 3,
-            child2TransitionMatrix: 3,
-        }
-        ];
-
-        inst.perform_operations(ops);
-        println!("Root Sum Log Likelihood: {}", inst.calculate_root_log_likelihood(4, 0));
-        assert_eq!(beagle::sys::ReturnCode::SUCCESS, inst.teardown());
     }
 }
+
 

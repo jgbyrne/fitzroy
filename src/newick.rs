@@ -228,7 +228,7 @@ fn parse_tree(toks: &mut Vec<Token>) -> Result<(Tree, Labels), String> {
     }
 
     let mut nodes = vec![];
-    let mut labels = vec![];
+    let mut labels: Labels = vec![];
 
     let pnodes = pnodes.0;
 
@@ -242,8 +242,8 @@ fn parse_tree(toks: &mut Vec<Token>) -> Result<(Tree, Labels), String> {
                 if let NodeValue::Internal {branches, name} = &pnodes[*sub].val {
                     nodes.push(TreeNode { id: 0, parent: 0, lchild: 0, rchild: 0, length: 0.0 });
                     match &pnodes[*name].val {
-                        NodeValue::Name(Some(s)) => { labels.push(s.clone()); },
-                        NodeValue::Name(None) => { labels.push(String::new()); },
+                        NodeValue::Name(Some(s)) => { labels.push(Label::Interior {name: s.clone()}); },
+                        NodeValue::Name(None) => { labels.push(Label::Interior {name: String::new()}); },
                         _ => { panic!("TreeGen: `name` not NodeValue::Name"); },
                     }
                     if branches.len() != 2 { return Err(String::from("TreeGen: Not a binary tree")); }
@@ -274,15 +274,15 @@ fn parse_tree(toks: &mut Vec<Token>) -> Result<(Tree, Labels), String> {
                 match &pnodes[*sub].val { 
                     NodeValue::Leaf { name } => {
                         match &pnodes[*name].val {
-                            NodeValue::Name(Some(s)) => { labels.push(s.clone()); },
-                            NodeValue::Name(None) => { labels.push(String::new()); },
+                            NodeValue::Name(Some(s)) => { labels.push(Label::Tip {name: s.clone(), data: vec![], calibration: None}); },
+                            NodeValue::Name(None) => { labels.push(Label::Tip {name: String::new(), data: vec![], calibration: None}); },
                             _ => { panic!("TreeGen: `name` not NodeValue::Name"); },
                         }
                     },
                     NodeValue::Internal { branches, name } => {
                         match &pnodes[*name].val {
-                            NodeValue::Name(Some(s)) => { labels.push(s.clone()); },
-                            NodeValue::Name(None) => { labels.push(String::new()); },
+                            NodeValue::Name(Some(s)) => { labels.push(Label::Interior {name: s.clone()}); },
+                            NodeValue::Name(None) => { labels.push(Label::Interior {name: String::new()}); },
                             _ => { panic!("TreeGen: `name` not NodeValue::Name"); },
                         }
 

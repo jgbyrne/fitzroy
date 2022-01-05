@@ -1,5 +1,9 @@
 use beagle;
 
+use std::collections::HashMap;
+
+use crate::cfg::Calibration;
+
 #[derive(Debug)]
 pub struct TreeNode {
     pub id: usize,
@@ -7,6 +11,18 @@ pub struct TreeNode {
     pub lchild: usize,
     pub rchild: usize,
     pub length: f64,
+}
+
+impl TreeNode {
+    pub fn blank() -> Self {
+        TreeNode {
+            id: 0,
+            parent: 0,
+            lchild: 0,
+            rchild: 0,
+            length: 0.0,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -67,4 +83,52 @@ impl Tree {
     }
 }
 
-pub type Labels = Vec<String>;
+#[derive(Debug)]
+pub struct Tip {
+    pub id: usize,
+    pub name: String,
+    pub data: Vec<f32>,
+}
+
+#[derive(Debug)]
+pub struct Interior {
+    pub id: usize,
+    pub name: String,
+}
+
+#[derive(Debug)]
+pub struct TreeData {
+    tips: Vec<Tip>,
+    interiors: HashMap<usize, Interior>,
+}
+
+impl TreeData {
+    pub fn from_tips(tips: Vec<(String, Vec<f32>)>) -> Self {
+        let tips = tips.into_iter()
+                       .enumerate()
+                       .map(|(i, (name, data))| Tip { id: i+1, name, data})
+                       .collect::<Vec<Tip>>();
+        Self { tips: tips, interiors: HashMap::new() }
+    }
+
+    pub fn label_interior(&mut self, int: Interior) {
+        self.interiors.insert(int.id, int);
+    }
+}
+
+/*
+#[derive(Debug, Clone)]
+pub enum Label {
+    Interior {name: String},
+    Tip { name: String, data: Vec<f32>, calibration: Option<Calibration> },
+}
+
+pub struct Labels {
+    tips: Vec<Label> 
+}
+
+impl Labels {
+    pub 
+}
+*/
+
