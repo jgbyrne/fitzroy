@@ -98,37 +98,29 @@ pub struct Interior {
 
 #[derive(Debug)]
 pub struct TreeData {
-    tips: Vec<Tip>,
-    interiors: HashMap<usize, Interior>,
+    pub traits: i32,
+    pub tips: Vec<Tip>,
+    pub interiors: HashMap<usize, Interior>,
 }
 
 impl TreeData {
     pub fn from_tips(tips: Vec<(String, Vec<f32>)>) -> Self {
+        let n_traits = match tips.get(0) {
+            Some((_, data)) => data.len(),
+            None => 0,
+        };
         let tips = tips.into_iter()
                        .enumerate()
                        .map(|(i, (name, data))| Tip { id: i+1, name, data})
                        .collect::<Vec<Tip>>();
-        Self { tips: tips, interiors: HashMap::new() }
+        Self { 
+            traits: n_traits as i32,
+            tips: tips,
+            interiors: HashMap::new()
+        }
     }
 
     pub fn label_interior(&mut self, int: Interior) {
         self.interiors.insert(int.id, int);
     }
 }
-
-/*
-#[derive(Debug, Clone)]
-pub enum Label {
-    Interior {name: String},
-    Tip { name: String, data: Vec<f32>, calibration: Option<Calibration> },
-}
-
-pub struct Labels {
-    tips: Vec<Label> 
-}
-
-impl Labels {
-    pub 
-}
-*/
-
