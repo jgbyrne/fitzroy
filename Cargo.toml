@@ -8,3 +8,4 @@ edition = "2018"
 [dependencies]
 beagle = {package = "libhmsbeagle", path = "../libhmsbeagle-rs" }
 rand = "0.8.4"
+statrs = "0.15.0"

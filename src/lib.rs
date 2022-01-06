@@ -11,13 +11,13 @@ pub mod tree;
 pub mod nexus;
 
 pub struct Engine {
-    inst: beagle::Instance,
+//    inst: beagle::Instance,
 }
 
 pub struct MCMC {
-    config: cfg::Configuration,
-    params: params::Parameters,
-    engine: Engine,
+    pub config: cfg::Configuration,
+    pub params: params::Parameters,
+    pub engine: Engine,
 }
 
 impl MCMC {
@@ -41,7 +41,7 @@ impl MCMC {
         Self {
             config,
             params,
-            engine,
+            engine: Engine {},
         }
     }
 }

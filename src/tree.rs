@@ -11,6 +11,7 @@ pub struct TreeNode {
     pub lchild: usize,
     pub rchild: usize,
     pub length: f64,
+    pub height: f64,
 }
 
 impl TreeNode {
@@ -21,6 +22,7 @@ impl TreeNode {
             lchild: 0,
             rchild: 0,
             length: 0.0,
+            height: 0.0,
         }
     }
 }
