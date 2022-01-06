@@ -13,7 +13,15 @@ pub struct DataBlock<'src> {
 }
 
 impl<'src> DataBlock<'src> {
-    pub fn binary_into_partials(&self) -> Option<Vec<(String, Vec<f32>)>> {
+
+    pub fn num_traits(&self) -> Option<i32> {
+        match self.matrix.values().next() {
+            Some(chars) => { Some(chars.len() as i32) },
+            None => None,
+        }
+    }
+
+    pub fn binary_into_partials(&self) -> Option<Vec<(String, Vec<f64>)>> {
         let mut tips = vec![];
         for (tag, chars) in &self.matrix {
             let mut partials = vec![];

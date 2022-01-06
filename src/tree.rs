@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::cfg::Calibration;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TreeNode {
     pub id: usize,
     pub parent: usize,
@@ -27,7 +27,7 @@ impl TreeNode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Tree {
     pub nodes: Vec<TreeNode>,
 }
@@ -47,18 +47,21 @@ impl Tree {
         ctr
     }
 
-    fn length(&self, id: usize) -> f64 {
+    pub fn length(&self, id: usize) -> f64 {
         self.nodes[id].length
     }
 
-    fn lchild(&self, id: usize) -> usize {
+    pub fn lchild(&self, id: usize) -> usize {
         self.nodes[id].lchild 
     }
 
-    fn rchild(&self, id: usize) -> usize {
+    pub fn rchild(&self, id: usize) -> usize {
         self.nodes[id].rchild 
     }
 
+    pub fn edge_lengths(&self) -> Vec<f64> {
+        self.nodes.iter().map(|n| n.length).collect::<Vec<f64>>()
+    }
 
     pub fn level_order(&self) -> Vec<usize> {
         let mut ordered = vec![];
@@ -106,7 +109,7 @@ impl Tree {
 pub struct Tip {
     pub id: usize,
     pub name: String,
-    pub data: Vec<f32>,
+    pub data: Vec<f64>,
 }
 
 #[derive(Debug)]
@@ -123,28 +126,28 @@ pub struct TreeData {
 }
 
 impl TreeData {
-    pub fn from_tips(tips: Vec<(String, Vec<f32>)>) -> Self {
-        let n_traits = match tips.get(0) {
-            Some((_, data)) => data.len(),
-            None => 0,
-        };
+    pub fn from_tips(num_traits: i32, tips: Vec<(String, Vec<f64>)>) -> Self {
         let tips = tips.into_iter()
                        .enumerate()
                        .map(|(i, (name, data))| Tip { id: i+1, name, data})
                        .collect::<Vec<Tip>>();
         Self { 
-            traits: n_traits as i32,
+            traits: num_traits,
             tips: tips,
             interiors: HashMap::new()
         }
     }
 
-    pub fn label_interior(&mut self, int: Interior) {
-        self.interiors.insert(int.id, int);
+    pub fn num_tips(&self) -> usize {
+        self.tips.len()
     }
 
     pub fn tip(&self, tip_id: usize) -> &Tip {
         &self.tips[tip_id - 1]
+    }
+
+    pub fn tips(&self) -> &Vec<Tip> {
+        &self.tips
     }
 }
 

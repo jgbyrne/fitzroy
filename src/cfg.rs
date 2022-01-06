@@ -1,5 +1,7 @@
 use crate::tree;
 use crate::params;
+use crate::Engine;
+
 use rand::Rng;
 use rand::seq::SliceRandom;
 use rand::distributions::Distribution;
@@ -14,20 +16,18 @@ pub enum PriorDist {
 }
 
 impl PriorDist {
-    pub fn draw(&self) -> f64 {
+    pub fn draw(&self, engine: &mut Engine) -> f64 {
         match self {
             PriorDist::Reciprocal => {
                 unimplemented!();
             },
             PriorDist::Uniform { low, high } => {
-                let mut rng = rand::thread_rng();
-                let r: f64 = rng.gen();
+                let r: f64 = engine.rng.gen();
                 low + (r * (high - low))
             },
             PriorDist::Exponential { l } => {
                 let dist = Exp::new(*l).unwrap();
-                let mut rng = rand::thread_rng();
-                dist.sample(&mut rng)
+                dist.sample(&mut engine.rng)
             },
         }
     }
@@ -39,11 +39,11 @@ pub enum TreePrior {
 }
 
 impl TreePrior {
-    pub fn draw(&self) -> params::TreePriorParams {
+    pub fn draw(&self, engine: &mut Engine) -> params::TreePriorParams {
         match self {
             Self::Uniform { root } => {
                 params::TreePriorParams::Uniform {
-                    root: root.draw(),
+                    root: root.draw(engine),
                 }
             }
         }
@@ -64,8 +64,8 @@ pub struct TreeModel {
 }
 
 impl TreeModel {
-    pub fn draw(&self) -> params::TreeParams {
-        let prior = self.prior.draw();
+    pub fn draw(&self, engine: &mut Engine) -> params::TreeParams {
+        let prior = self.prior.draw(engine);
         let mut root_node = tree::TreeNode::blank();
 
         // unsure what to do for priors not conditions on tmrca...
@@ -85,10 +85,9 @@ impl TreeModel {
 
         for (id, cal) in &self.calibrations {
             let dist = PriorDist::Uniform { low: cal.low, high: cal.high };
-            nodes[*id].height = dist.draw();
+            nodes[*id].height = dist.draw(engine);
         }
 
-        let mut rng = rand::thread_rng();
         loop {
             if let [l, r] = active[..] {
                 nodes[0].lchild = l;
@@ -119,7 +118,7 @@ impl TreeModel {
             active.swap_remove(low);
             let a_height = low_height;
 
-            let b_id = rng.gen_range(0..active.len());
+            let b_id = engine.rng.gen_range(0..active.len());
             let b = active.swap_remove(b_id);
             let b_height = nodes[b].height;
 
@@ -132,7 +131,7 @@ impl TreeModel {
             nodes[a].parent = parent.id;
             nodes[b].parent = parent.id;
 
-            let p = rng.gen_range(2..10) as f64;
+            let p = engine.rng.gen_range(2..10) as f64;
             let height = b_height + (nodes[0].height - b_height) * (1.0 / p);
             parent.height = height;
 
@@ -159,10 +158,10 @@ pub enum SubstitutionModel {
 }
 
 impl SubstitutionModel {
-    pub fn draw(&self) -> params::SubstitutionModelParams {
+    pub fn draw(&self, engine: &mut Engine) -> params::SubstitutionModelParams {
         match self {
             Self::BinaryGTR { pi_one: dist } => {
-                params::SubstitutionModelParams::BinaryGTR { pi_one: dist.draw() }
+                params::SubstitutionModelParams::BinaryGTR { pi_one: dist.draw(engine) }
             },
         }
     }
@@ -175,7 +174,7 @@ pub struct ASRV {
 }
 
 impl ASRV {
-    pub fn draw(&self, sites: i32) -> params::ASRVParams {
+    pub fn draw(&self, engine: &mut Engine, sites: i32) -> params::ASRVParams {
         if !self.enabled {
             return params::ASRVParams { shape: 0.0, rates: vec![] }
         }
@@ -192,7 +191,7 @@ pub struct ABRV {
 }
 
 impl ABRV {
-    pub fn draw(&self) -> params::ABRVParams {
+    pub fn draw(&self, engine: &mut Engine) -> params::ABRVParams {
         //TODO
         params::ABRVParams { shape: 0.0 }
     }
@@ -207,8 +206,30 @@ pub struct TraitsModel {
     pub abrv: ABRV,
 }
 
+impl TraitsModel {
+    pub fn draw(&self, engine: &mut Engine, data_traits: i32) -> params::TraitsParams {
+        params::TraitsParams {
+            num_traits: data_traits, //TODO impl num traits prior
+            subst: self.subst.draw(engine),
+            base: self.base.draw(engine),
+            asrv: self.asrv.draw(engine, data_traits),
+            abrv: self.abrv.draw(engine),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Configuration {
     pub tree: TreeModel,
     pub traits: TraitsModel,
 }
+
+impl Configuration {
+    pub fn draw(&self, engine: &mut Engine) -> params::Parameters {
+        params::Parameters {
+            tree: self.tree.draw(engine),
+            traits: self.traits.draw(engine, self.tree.data.traits),
+        }
+    }
+}
+
