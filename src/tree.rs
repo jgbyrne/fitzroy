@@ -33,6 +33,10 @@ pub struct Tree {
 }
 
 impl Tree {
+    pub fn is_leaf(&self, id: usize) -> bool {
+        self.nodes[id].lchild == 0 && self.nodes[id].rchild == 0
+    }
+
     pub fn num_leaves(&self) -> usize {
         let mut ctr = 0;
         for node in &self.nodes {
@@ -42,6 +46,19 @@ impl Tree {
         }
         ctr
     }
+
+    fn length(&self, id: usize) -> f64 {
+        self.nodes[id].length
+    }
+
+    fn lchild(&self, id: usize) -> usize {
+        self.nodes[id].lchild 
+    }
+
+    fn rchild(&self, id: usize) -> usize {
+        self.nodes[id].rchild 
+    }
+
 
     pub fn level_order(&self) -> Vec<usize> {
         let mut ordered = vec![];
@@ -125,4 +142,25 @@ impl TreeData {
     pub fn label_interior(&mut self, int: Interior) {
         self.interiors.insert(int.id, int);
     }
+
+    pub fn tip(&self, tip_id: usize) -> &Tip {
+        &self.tips[tip_id - 1]
+    }
 }
+
+fn write_node_newick(tree: &Tree, data: &TreeData, node: usize) -> String {
+    if tree.is_leaf(node) {
+        format!("{}:{:.1}", data.tip(node).name, tree.length(node))
+    }
+    else {
+        format!("({},{}):{:.1}", write_node_newick(tree, data, tree.lchild(node)),
+                                 write_node_newick(tree, data, tree.rchild(node)),
+                                 tree.length(node))
+    }
+}
+
+pub fn write_newick(tree: &Tree, data: &TreeData) -> String {
+    format!("({},{});", write_node_newick(tree, data, tree.lchild(0)), write_node_newick(tree, data, tree.rchild(0)))
+}
+
+
