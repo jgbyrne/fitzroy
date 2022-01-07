@@ -52,8 +52,8 @@ impl TraitsParams {
                 let b = pi_zero * scale;
 
                 let evals = vec![0.0, -a-b];
-                let evecs = vec![1.0, 1.0, -(a/b), 1.0];
-                let inv_evecs = vec![pi_zero, -pi_zero, pi_one, pi_zero];
+                let evecs = vec![1.0, -(a/b), 1.0, 1.0];
+                let inv_evecs = vec![pi_zero, pi_one, -pi_zero, pi_zero];
 
                 (freqs, evals, evecs, inv_evecs)
             },
@@ -61,10 +61,12 @@ impl TraitsParams {
 
         beagle::Model {
             state_freqs: freqs,
+
             eigenvalues: evals,
             eigenvectors: evecs,
             inv_eigenvectors: inv_evecs,
-            category_rates: vec![1.0, 1.0, 1.0, 1.0], // TODO ASRV
+
+            category_rates: vec![1.0, 1.0, 1.0, 1.0],
             category_probs: vec![0.25, 0.25, 0.25, 0.25],
         }
     }

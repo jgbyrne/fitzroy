@@ -3,6 +3,7 @@ use beagle;
 use std::collections::HashMap;
 
 use crate::cfg::Calibration;
+use crate::Engine;
 
 #[derive(Clone, Debug)]
 pub struct TreeNode {
@@ -59,10 +60,6 @@ impl Tree {
         self.nodes[id].rchild 
     }
 
-    pub fn edge_lengths(&self) -> Vec<f64> {
-        self.nodes.iter().map(|n| n.length).collect::<Vec<f64>>()
-    }
-
     pub fn level_order(&self) -> Vec<usize> {
         let mut ordered = vec![];
         let mut cur_lvl = vec![0];
@@ -83,25 +80,42 @@ impl Tree {
         ordered
     }
 
-    pub fn beagle_operations(&self) -> Vec<beagle::sys::Operation> {
+    pub fn calculate(&self, engine: &mut Engine) {
+        let inst = engine.instance();
         let mut op_vec = vec![];
+        let mut dest_vec = vec![];
         for node_id in self.level_order().iter().rev() {
             let node = &self.nodes[*node_id];
             if node.lchild != 0 && node.rchild != 0 {
+                let b_parent = self.beagle_id(*node_id);
+                let b_left = self.beagle_id(node.lchild);
+                let b_right = self.beagle_id(node.rchild);
+
+                dest_vec.push(b_parent);
                 op_vec.push(
                     beagle::sys::Operation {
-                        destinationPartials: *node_id as i32,
-                        destinationScaleWrite: -1,
-                        destinationScaleRead: -1,
-                        child1Partials: node.lchild as i32,
-                        child1TransitionMatrix: node.lchild as i32,
-                        child2Partials: node.rchild as i32,
-                        child2TransitionMatrix: node.rchild as i32,
+                        destinationPartials: b_parent,
+                        destinationScaleWrite: inst.scaling_buffer(b_parent),
+                        destinationScaleRead: beagle::sys::OpCodes::OP_NONE as i32,
+                        child1Partials: b_left,
+                        child1TransitionMatrix: b_left,
+                        child2Partials: b_right,
+                        child2TransitionMatrix: b_right,
                     }
                 );
             }
         }
-        op_vec
+        inst.perform_operations(op_vec);
+        inst.wait_for_partials(dest_vec);
+    }
+
+    pub fn beagle_edge_lengths(&self) -> Vec<f64> {
+        self.nodes.iter().skip(1).map(|n| 0.0001 *n.length).collect::<Vec<f64>>();
+    }
+
+    pub fn beagle_id(&self, node_id: usize) -> i32 {
+        if node_id == 0 { (self.nodes.len() - 1) as i32 }
+        else { (node_id - 1) as i32 }
     }
 }
 

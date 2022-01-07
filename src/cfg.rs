@@ -72,6 +72,7 @@ impl TreeModel {
         match prior {
             params::TreePriorParams::Uniform { root } => {
                 root_node.height = root;
+                root_node.length = 1.0;
             }
         }
 

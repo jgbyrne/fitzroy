@@ -11,50 +11,35 @@ fn test_beagle_partial_tips() {
         let mut partials: Vec<f64> = vec![];
         for c in seq.chars() {
             match c {
-                'A' => partials.extend_from_slice(&[1.0,0.0,0.0,0.0]),
-                'C' => partials.extend_from_slice(&[0.0,1.0,0.0,0.0]),
-                'G' => partials.extend_from_slice(&[0.0,0.0,1.0,0.0]),
-                'T' => partials.extend_from_slice(&[0.0,0.0,0.0,1.0]),
-                _   => partials.extend_from_slice(&[1.0,1.0,1.0,1.0]),
+                'A' => partials.extend_from_slice(&[1.0,0.0]),
+                'C' => partials.extend_from_slice(&[0.0,1.0]),
+                'G' => partials.extend_from_slice(&[0.0,0.0]),
+                'T' => partials.extend_from_slice(&[0.0,0.0]),
+                _   => partials.extend_from_slice(&[1.0,1.0]),
             }
         }
         partials
     };
 
     let model = beagle::Model {
-        state_freqs: vec![0.25, 0.25, 0.25, 0.25],
-        
-        eigenvalues: vec![
-            0.0,
-            -1.3333333333333333,
-            -1.3333333333333333,
-            -1.3333333333333333
-        ],
+        state_freqs: vec![0.5, 0.5],
 
-        eigenvectors: vec![
-            1.0,  2.0,  0.0,  0.5,
-            1.0,  -2.0,  0.5,  0.0,
-            1.0,  2.0, 0.0,  -0.5,
-            1.0,  -2.0,  -0.5,  0.0
-        ],
+        eigenvalues: vec![0.0, -2.0],
 
-        inv_eigenvectors: vec![
-            0.25,  0.25,  0.25,  0.25,
-            0.125,  -0.125,  0.125,  -0.125,
-            0.0,  1.0,  0.0,  -1.0,
-            1.0,  0.0,  -1.0,  0.0
-        ],
+        eigenvectors: vec![1.0, -1.0, 1.0, 1.0],
 
-        category_rates: vec![0.03338775, 0.25191592, 0.82026848, 2.89442785],
-        category_probs: vec![0.25, 0.25, 0.25, 0.25],
+        inv_eigenvectors: vec![0.5, 0.5, -0.5, 0.5],
+
+        category_rates: vec![1.0],
+        category_probs: vec![1.0],
     };
 
-    let mut inst = beagle::Instance::new(4, human_str.len() as i32, 4, 5, 3, true, vec![model]);
-    inst.set_tip_data_partial(0, partial_seq(human_str));
-    inst.set_tip_data_partial(1, partial_seq(chimp_str));
-    inst.set_tip_data_partial(2, partial_seq(gorilla_str));
+    let mut inst = beagle::Instance::new(2, 1 as i32, 4, 5, 3, true, false, vec![model]);
+    inst.set_tip_data_partial(0, vec![0.0, 1.0]);//partial_seq(human_str));
+    inst.set_tip_data_partial(1, vec![0.0, 1.0]);//partial_seq(chimp_str));
+    inst.set_tip_data_partial(2, vec![1.0, 0.0]);//partial_seq(gorilla_str));
 
-    inst.update_matrices(0, vec![0.1, 0.1, 0.2, 0.1]);
+    inst.update_matrices(0, vec![10000.0, 10000.0, 10000.0, 10000.0]);
 
     let ops = vec![
     beagle::sys::Operation {
@@ -78,6 +63,11 @@ fn test_beagle_partial_tips() {
     ];
 
     inst.perform_operations(ops);
+    //inst.wait_for_partials(vec![3, 4]);
+    println!("Root Sum Log Likelihood: {}", inst.calculate_root_log_likelihood(0, 0));
+    println!("Root Sum Log Likelihood: {}", inst.calculate_root_log_likelihood(1, 0));
+    println!("Root Sum Log Likelihood: {}", inst.calculate_root_log_likelihood(2, 0));
+    println!("Root Sum Log Likelihood: {}", inst.calculate_root_log_likelihood(3, 0));
     println!("Root Sum Log Likelihood: {}", inst.calculate_root_log_likelihood(4, 0));
     assert_eq!(beagle::sys::ReturnCode::SUCCESS, inst.teardown());
 }

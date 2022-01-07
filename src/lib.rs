@@ -29,13 +29,14 @@ impl Engine {
         let n_sites = config.tree.data.traits;
         let n_tips = config.tree.data.num_tips() as i32;
         let n_nodes = (n_tips * 2) - 1; //TODO trial buffers
-        let mut inst = beagle::Instance::new(2, n_sites, 4, n_nodes, n_tips, true, vec![model]);
+        let mut inst = beagle::Instance::new(2, n_sites, 4, n_nodes, n_tips, true, true, vec![model]);
 
         for tip in &config.tree.data.tips {
-            inst.set_tip_data_partial(tip.id as i32, tip.data.clone());
+            let tip_beagle_id = params.tree.tree.beagle_id(tip.id);
+            inst.set_tip_data_partial(tip_beagle_id, tip.data.clone());
         }
 
-        inst.update_matrices(0, params.tree.tree.edge_lengths());
+        inst.update_matrices(0, params.tree.tree.beagle_edge_lengths());
 
         self.inst = Some(inst);
 
@@ -61,7 +62,7 @@ impl<'c> MCMC<'c> {
         let mut engine = Engine::forge(&config);
         let params = config.draw(&mut engine);
         
-        engine.start(&config, &params);
+        if engine.start(&config, &params) { println!("Engine started") };
 
         Self {
             config,
@@ -84,9 +85,8 @@ impl<'c> MCMC<'c> {
     }
 
     pub fn log_likelihood(&mut self) -> f64 {
-        let ops = self.params.tree.tree.beagle_operations();
-        self.engine.instance().perform_operations(ops);
-        self.engine.instance().calculate_root_log_likelihood(0, 0)
+        self.params.tree.tree.calculate(&mut self.engine);
+        self.engine.instance().calculate_root_log_likelihood(self.params.tree.tree.beagle_id(0), 0)
     }
 }
 
