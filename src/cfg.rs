@@ -80,7 +80,7 @@ impl TreeModel {
         let mut active = vec![]; 
         for tip in &self.data.tips {
             nodes.push(tree::TreeNode { id: tip.id, parent: 0, lchild: 0, rchild: 0,
-                                        length: 0.0, height: 0.0 });
+                                        length: 0.0, height: 0.0});
             active.push(tip.id);
         }
 

@@ -11,6 +11,21 @@ pub mod tree;
 //pub mod newick;
 pub mod nexus;
 
+pub struct Damage {
+    partials: Vec<bool>,
+    matrices: Vec<bool>,
+}
+
+impl Damage {
+    fn blank(tree: &tree::Tree) -> Self {
+        let n_nodes = tree.nodes.len();
+        Damage { 
+            partials: (0..n_nodes).map(|_| false).collect::<Vec<bool>>(),
+            matrices: (0..n_nodes).map(|_| false).collect::<Vec<bool>>(),
+        }
+    }
+}
+
 pub struct Engine {
     run: bool,
     rng: ThreadRng,
@@ -29,14 +44,19 @@ impl Engine {
         let n_sites = config.tree.data.traits;
         let n_tips = config.tree.data.num_tips() as i32;
         let n_nodes = (n_tips * 2) - 1; //TODO trial buffers
-        let mut inst = beagle::Instance::new(2, n_sites, 4, n_nodes, n_tips, true, true, vec![model]);
+        let mut inst = beagle::Instance::new(2, n_sites, 4, n_nodes, n_tips,
+                                             true, true, false, vec![model]);
 
         for tip in &config.tree.data.tips {
             let tip_beagle_id = params.tree.tree.beagle_id(tip.id);
             inst.set_tip_data_partial(tip_beagle_id, tip.data.clone());
         }
 
-        inst.update_matrices(0, params.tree.tree.beagle_edge_lengths());
+        let mut edge_lengths = params.tree.tree.beagle_edge_lengths();
+        // alternates 
+        // edge_lengths.append(&mut edge_lengths.clone());
+
+        inst.update_matrices(0, edge_lengths);
 
         self.inst = Some(inst);
 
@@ -54,7 +74,7 @@ pub struct MCMC<'c> {
     pub config: &'c cfg::Configuration,
     pub params: params::Parameters,
     pub engine: Engine,
-    pub log_likelihood: f64, 
+    pub last_log_likelihood: f64, 
 }
 
 impl<'c> MCMC<'c> {
@@ -68,7 +88,7 @@ impl<'c> MCMC<'c> {
             config,
             params,
             engine,
-            log_likelihood: 0.0,
+            last_log_likelihood: f64::NEG_INFINITY,
         }
     }
 
@@ -80,8 +100,11 @@ impl<'c> MCMC<'c> {
             config: self.config,
             params: self.params.clone(),
             engine,
-            log_likelihood: self.log_likelihood,
+            last_log_likelihood: self.last_log_likelihood,
         }
+    }
+
+    pub fn step(&mut self) {
     }
 
     pub fn log_likelihood(&mut self) -> f64 {

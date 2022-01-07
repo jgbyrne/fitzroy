@@ -34,7 +34,7 @@ fn test_beagle_partial_tips() {
         category_probs: vec![1.0],
     };
 
-    let mut inst = beagle::Instance::new(2, 1 as i32, 4, 5, 3, true, false, vec![model]);
+    let mut inst = beagle::Instance::new(2, 1 as i32, 4, 5, 3, true, false, true, vec![model]);
     inst.set_tip_data_partial(0, vec![0.0, 1.0]);//partial_seq(human_str));
     inst.set_tip_data_partial(1, vec![0.0, 1.0]);//partial_seq(chimp_str));
     inst.set_tip_data_partial(2, vec![1.0, 0.0]);//partial_seq(gorilla_str));

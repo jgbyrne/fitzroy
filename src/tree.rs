@@ -87,21 +87,16 @@ impl Tree {
         for node_id in self.level_order().iter().rev() {
             let node = &self.nodes[*node_id];
             if node.lchild != 0 && node.rchild != 0 {
+                let l_node = &self.nodes[node.lchild];
+                let r_node = &self.nodes[node.rchild];
+
                 let b_parent = self.beagle_id(*node_id);
                 let b_left = self.beagle_id(node.lchild);
                 let b_right = self.beagle_id(node.rchild);
 
                 dest_vec.push(b_parent);
                 op_vec.push(
-                    beagle::sys::Operation {
-                        destinationPartials: b_parent,
-                        destinationScaleWrite: inst.scaling_buffer(b_parent),
-                        destinationScaleRead: beagle::sys::OpCodes::OP_NONE as i32,
-                        child1Partials: b_left,
-                        child1TransitionMatrix: b_left,
-                        child2Partials: b_right,
-                        child2TransitionMatrix: b_right,
-                    }
+                    inst.build_operation(b_parent, b_left, b_right)
                 );
             }
         }
@@ -110,7 +105,7 @@ impl Tree {
     }
 
     pub fn beagle_edge_lengths(&self) -> Vec<f64> {
-        self.nodes.iter().skip(1).map(|n| 0.0001 *n.length).collect::<Vec<f64>>();
+        self.nodes.iter().skip(1).map(|n| 0.0001 *n.length).collect::<Vec<f64>>()
     }
 
     pub fn beagle_id(&self, node_id: usize) -> i32 {
