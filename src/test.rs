@@ -34,12 +34,27 @@ fn test_beagle_partial_tips() {
         category_probs: vec![1.0],
     };
 
-    let mut inst = beagle::Instance::new(2, 1 as i32, 4, 5, 3, true, false, true, vec![model]);
+    let mut inst = beagle::Instance::new(2, 1 as i32, 4, 5, 3, 1, true, false, true);
     inst.set_tip_data_partial(0, vec![0.0, 1.0]);//partial_seq(human_str));
     inst.set_tip_data_partial(1, vec![0.0, 1.0]);//partial_seq(chimp_str));
     inst.set_tip_data_partial(2, vec![1.0, 0.0]);//partial_seq(gorilla_str));
 
-    inst.update_matrices(0, vec![10000.0, 10000.0, 10000.0, 10000.0]);
+    inst.set_models(&vec![model]);
+
+    let mut updates = vec![];
+    let edge_lengths = vec![10000.0, 10000.0, 10000.0, 10000.0];
+
+    for i in 0..edge_lengths.len() {
+        updates.push(
+            beagle::MatrixUpdate {
+                model_id: 0,
+                node_id: i as i32,
+                edge_length: edge_lengths[i],
+            }
+        );
+    }
+
+    inst.update_matrices(updates);
 
     let ops = vec![
     beagle::sys::Operation {
