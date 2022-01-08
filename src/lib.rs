@@ -17,12 +17,52 @@ pub struct Damage {
 }
 
 impl Damage {
-    fn blank(tree: &tree::Tree) -> Self {
+    pub fn blank(tree: &tree::Tree) -> Self {
         let n_nodes = tree.nodes.len();
         Damage { 
             partials: (0..n_nodes).map(|_| false).collect::<Vec<bool>>(),
             matrices: (0..n_nodes).map(|_| false).collect::<Vec<bool>>(),
         }
+    }
+
+    pub fn full(tree: &tree::Tree) -> Self {
+        let mut damage = Self::blank(tree);
+        damage.mark_all_partials();
+        damage.mark_all_matrices();
+        damage
+    }
+
+    pub fn is_marked_partials(&self, node_id: usize) -> bool {
+        self.partials[node_id]
+    }
+
+    pub fn is_marked_matrix(&self, node_id: usize) -> bool {
+        self.matrices[node_id]
+    }
+
+    pub fn mark_partials(&mut self, node_id: usize) {
+        self.partials[node_id] = true;
+    }
+
+    pub fn mark_matrix(&mut self, node_id: usize) {
+        self.matrices[node_id] = true;
+    }
+
+    pub fn mark_all_partials(&mut self) {
+        self.partials.iter_mut().for_each(|item| *item = true);
+    }
+
+    pub fn mark_partials_to_root(&mut self, tree: &tree::Tree, node_id: usize) {
+        self.mark_partials(node_id);
+        let mut cur = node_id;
+        while let Some(parent) = tree.node_parent(cur) {
+            self.mark_partials(parent);
+            cur = parent;
+        }
+    }
+
+    pub fn mark_all_matrices(&mut self) {
+        self.matrices.iter_mut().for_each(|item| *item = true);
     }
 }
 
@@ -44,19 +84,13 @@ impl Engine {
         let n_sites = config.tree.data.traits;
         let n_tips = config.tree.data.num_tips() as i32;
         let n_nodes = (n_tips * 2) - 1; //TODO trial buffers
-        let mut inst = beagle::Instance::new(2, n_sites, 4, n_nodes, n_tips,
-                                             true, true, false, vec![model]);
+        let mut inst = beagle::Instance::new(2, n_sites, 4, n_nodes, n_tips, 1,
+                                             true, true, false);
 
         for tip in &config.tree.data.tips {
             let tip_beagle_id = params.tree.tree.beagle_id(tip.id);
             inst.set_tip_data_partial(tip_beagle_id, tip.data.clone());
         }
-
-        let mut edge_lengths = params.tree.tree.beagle_edge_lengths();
-        // alternates 
-        // edge_lengths.append(&mut edge_lengths.clone());
-
-        inst.update_matrices(0, edge_lengths);
 
         self.inst = Some(inst);
 
@@ -107,8 +141,14 @@ impl<'c> MCMC<'c> {
     pub fn step(&mut self) {
     }
 
-    pub fn log_likelihood(&mut self) -> f64 {
-        self.params.tree.tree.calculate(&mut self.engine);
+    pub fn log_likelihood(&mut self, damage: &Damage) -> f64 {
+        self.engine.instance().set_models(&vec![self.params.traits.model()]);
+
+        let updates = self.params.tree.tree.beagle_edge_updates(damage);
+        self.engine.instance().update_matrices(updates);
+
+        let ops = self.params.tree.tree.beagle_operations(&mut self.engine, damage);
+        self.engine.instance().perform_operations(ops);
         self.engine.instance().calculate_root_log_likelihood(self.params.tree.tree.beagle_id(0), 0)
     }
 }
