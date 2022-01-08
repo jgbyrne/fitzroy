@@ -93,12 +93,17 @@ impl Engine {
         }
 
         self.inst = Some(inst);
-
         self.run = true;
+
         true
     }
 
-    fn instance(&mut self) -> &mut beagle::Instance {
+    fn beagle(&self) -> &beagle::Instance {
+        if !self.run { panic!("Tried to access beagle instance but not running") }
+        self.inst.as_ref().unwrap()
+    }
+
+    fn beagle_mut(&mut self) -> &mut beagle::Instance {
         if !self.run { panic!("Tried to access beagle instance but not running") }
         self.inst.as_mut().unwrap()
     }
@@ -116,14 +121,16 @@ impl<'c> MCMC<'c> {
         let mut engine = Engine::forge(&config);
         let params = config.draw(&mut engine);
         
-        if engine.start(&config, &params) { println!("Engine started") };
+        engine.start(&config, &params);
 
-        Self {
+        let mut chain = Self {
             config,
             params,
             engine,
             last_log_likelihood: f64::NEG_INFINITY,
-        }
+        };
+        chain.log_likelihood();
+        chain
     }
 
     pub fn clone(&self) -> Self {
@@ -141,15 +148,24 @@ impl<'c> MCMC<'c> {
     pub fn step(&mut self) {
     }
 
-    pub fn log_likelihood(&mut self, damage: &Damage) -> f64 {
-        self.engine.instance().set_models(&vec![self.params.traits.model()]);
+    pub fn log_likelihood_with_damage(&mut self, damage: &Damage) -> f64 {
+        let tree = &self.params.tree.tree;
 
-        let updates = self.params.tree.tree.beagle_edge_updates(damage);
-        self.engine.instance().update_matrices(updates);
+        let updates = tree.beagle_edge_updates(damage);
+        let ops = tree.beagle_operations(&mut self.engine, damage);
+        
+        let inst = self.engine.beagle_mut();
+        inst.set_models(&vec![self.params.traits.model()]);
+        inst.update_matrices(updates);
+        inst.perform_operations(ops);
 
-        let ops = self.params.tree.tree.beagle_operations(&mut self.engine, damage);
-        self.engine.instance().perform_operations(ops);
-        self.engine.instance().calculate_root_log_likelihood(self.params.tree.tree.beagle_id(0), 0)
+        let logL = inst.calculate_root_log_likelihood(tree.beagle_id(0), 0);
+        self.last_log_likelihood = logL;
+        logL
+    }
+
+    pub fn log_likelihood(&mut self) -> f64 {
+        self.log_likelihood_with_damage(&Damage::full(&self.params.tree.tree))
     }
 }
 

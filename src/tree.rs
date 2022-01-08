@@ -89,8 +89,8 @@ impl Tree {
         ordered
     }
 
-    pub fn beagle_operations(&self, engine: &mut Engine, damage: &Damage) -> Vec<beagle::sys::Operation> {
-        let inst = engine.instance();
+    pub fn beagle_operations(&self, engine: &Engine, damage: &Damage) -> Vec<beagle::sys::Operation> {
+        let inst = engine.beagle();
         let mut op_vec = vec![];
         for node_id in self.level_order().iter().rev() {
             if !self.is_leaf(*node_id)  && damage.is_marked_partials(*node_id) {
