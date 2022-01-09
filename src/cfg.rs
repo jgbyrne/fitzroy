@@ -1,37 +1,17 @@
+use crate::proposal;
 use crate::tree;
 use crate::params;
+
 use crate::Engine;
+use crate::util::PriorDist;
+
+use std::boxed::Box;
 
 use rand::Rng;
 use rand::seq::SliceRandom;
 use rand::distributions::Distribution;
 
 use statrs::distribution::{Exp, Continuous};
-
-#[derive(Debug)]
-pub enum PriorDist {
-    Reciprocal,
-    Uniform { low: f64, high: f64 },
-    Exponential { l: f64 },
-}
-
-impl PriorDist {
-    pub fn draw(&self, engine: &mut Engine) -> f64 {
-        match self {
-            PriorDist::Reciprocal => {
-                unimplemented!();
-            },
-            PriorDist::Uniform { low, high } => {
-                let r: f64 = engine.rng.gen();
-                low + (r * (high - low))
-            },
-            PriorDist::Exponential { l } => {
-                let dist = Exp::new(*l).unwrap();
-                dist.sample(&mut engine.rng)
-            },
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum TreePrior {
@@ -231,6 +211,15 @@ impl Configuration {
             tree: self.tree.draw(engine),
             traits: self.traits.draw(engine, self.tree.data.traits),
         }
+    }
+
+    pub fn get_moves(&self) -> proposal::Propose {
+        let mut propose = proposal::Propose::empty();
+
+        propose.add_move(proposal::PiOneMove::new(), 1);
+
+        propose.lock();
+        propose
     }
 }
 

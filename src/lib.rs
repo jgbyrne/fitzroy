@@ -5,6 +5,8 @@ use rand::rngs::ThreadRng;
 #[cfg(test)]
 mod test;
 
+pub mod util;
+pub mod proposal;
 pub mod cfg;
 pub mod params;
 pub mod tree;
@@ -112,6 +114,7 @@ impl Engine {
 pub struct MCMC<'c> {
     pub config: &'c cfg::Configuration,
     pub params: params::Parameters,
+    pub propose: proposal::Propose,
     pub engine: Engine,
     pub last_log_likelihood: f64, 
 }
@@ -120,16 +123,18 @@ impl<'c> MCMC<'c> {
     pub fn new(config: &'c cfg::Configuration) -> Self {
         let mut engine = Engine::forge(&config);
         let params = config.draw(&mut engine);
+        let propose = config.get_moves();
         
         engine.start(&config, &params);
 
         let mut chain = Self {
             config,
             params,
+            propose,
             engine,
             last_log_likelihood: f64::NEG_INFINITY,
         };
-        chain.log_likelihood();
+        chain.last_log_likelihood = chain.log_likelihood();
         chain
     }
 
@@ -140,12 +145,27 @@ impl<'c> MCMC<'c> {
         Self {
             config: self.config,
             params: self.params.clone(),
+            propose: self.config.get_moves(),
             engine,
             last_log_likelihood: self.last_log_likelihood,
         }
     }
 
     pub fn step(&mut self) {
+        let result = self.propose.make_move(&self.config, &mut self.params, &mut self.engine);
+
+        let accepted = if result.log_prior_likelihood_delta != f64::NEG_INFINITY {
+            let likelihood = self.log_likelihood_with_damage(&result.damage);
+            let likelihood_delta = likelihood - self.last_log_likelihood;
+            let log_ratio = result.log_prior_likelihood_delta + likelihood_delta + result.log_hastings_ratio;
+
+            if log_ratio > util::log_uniform(&mut self.engine) {
+                self.last_log_likelihood = likelihood;
+                true
+            } else { false }
+        } else { false };
+
+        if !accepted { (result.revert)(self); }
     }
 
     pub fn log_likelihood_with_damage(&mut self, damage: &Damage) -> f64 {
@@ -159,9 +179,7 @@ impl<'c> MCMC<'c> {
         inst.update_matrices(updates);
         inst.perform_operations(ops);
 
-        let logL = inst.calculate_root_log_likelihood(tree.beagle_id(0), 0);
-        self.last_log_likelihood = logL;
-        logL
+        inst.calculate_root_log_likelihood(tree.beagle_id(0), 0)
     }
 
     pub fn log_likelihood(&mut self) -> f64 {
