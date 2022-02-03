@@ -217,6 +217,7 @@ impl Configuration {
         let mut propose = proposal::Propose::empty();
 
         propose.add_move(proposal::PiOneMove::new(), 1);
+        propose.add_move(proposal::BaseRateMove::new(), 1);
 
         propose.lock();
         propose

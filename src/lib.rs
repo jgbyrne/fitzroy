@@ -171,7 +171,7 @@ impl<'c> MCMC<'c> {
     pub fn log_likelihood_with_damage(&mut self, damage: &Damage) -> f64 {
         let tree = &self.params.tree.tree;
 
-        let updates = tree.beagle_edge_updates(damage);
+        let updates = tree.beagle_edge_updates(self.params.traits.base, damage);
         let ops = tree.beagle_operations(&mut self.engine, damage);
         
         let inst = self.engine.beagle_mut();

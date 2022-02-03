@@ -3,6 +3,7 @@ use beagle;
 use std::collections::HashMap;
 
 use crate::cfg::Calibration;
+use crate::params;
 use crate::{Damage, Engine};
 
 #[derive(Clone, Debug)]
@@ -111,7 +112,7 @@ impl Tree {
     }
 
     // TODO this will probably need to accept a rate vector...
-    pub fn beagle_edge_updates(&self, damage: &Damage) -> Vec<beagle::MatrixUpdate> {
+    pub fn beagle_edge_updates(&self, base_rate: f64, damage: &Damage) -> Vec<beagle::MatrixUpdate> {
         // skip root (0)
         let mut updates = vec![];
         for tree_node in 1..self.nodes.len() {
@@ -119,7 +120,7 @@ impl Tree {
                 updates.push(beagle::MatrixUpdate {
                     model_id: 0,
                     node_id: self.beagle_id(tree_node),
-                    edge_length: self.nodes[tree_node].length * 0.0001,
+                    edge_length: self.nodes[tree_node].length * base_rate,
                 });
             }
         }

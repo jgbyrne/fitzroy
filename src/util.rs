@@ -29,6 +29,21 @@ impl PriorDist {
             },
         }
     }
+
+    pub fn log_density(&self, engine: &mut Engine, x: f64) -> f64 {
+        match self {
+            PriorDist::Reciprocal => {
+                unimplemented!();
+            },
+            PriorDist::Uniform { low, high } => {
+                (1.0 / (high - low)).ln()
+            },
+            PriorDist::Exponential { l } => {
+                let dist = Exp::new(*l).unwrap();
+                dist.ln_pdf(x)
+            },
+        }
+    }
 }
 
 pub fn log_uniform(engine: &mut Engine) -> f64 {

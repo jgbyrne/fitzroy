@@ -12,23 +12,23 @@ pub struct TreeParams {
     pub tree: tree::Tree,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum SubstitutionModelParams {
     BinaryGTR { pi_one: f64 },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ASRVParams {
     pub shape: f64,
     pub rates: Vec<f64>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ABRVParams {
     pub shape: f64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TraitsParams {
     pub num_traits: i32,
     pub subst: SubstitutionModelParams,

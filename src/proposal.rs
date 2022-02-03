@@ -66,6 +66,49 @@ pub trait Move {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c>;
 }
 
+pub struct BaseRateMove { }
+impl BaseRateMove {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for BaseRateMove {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        let cur_base_rate = params.traits.base;
+
+        let lambda = match config.traits.base {
+            PriorDist::Exponential { l }  => l,
+            _ => unimplemented!(),
+        };
+
+        let nudge = 1.0 / lambda;
+        let proposal = PriorDist::Uniform { low: cur_base_rate - nudge, high: cur_base_rate + nudge };
+        let new_base_rate = proposal.draw(engine);
+
+        params.traits.base = new_base_rate;
+
+        let revert = move |chain: &mut MCMC| {
+            chain.params.traits.base = cur_base_rate;
+        };
+
+        let log_prior_likelihood_delta = if new_base_rate > 0.0 {
+            let old = config.traits.base.log_density(engine, cur_base_rate);
+            let new = config.traits.base.log_density(engine, new_base_rate);
+            new - old
+        } else { f64::NEG_INFINITY }; // busted prior
+
+//        println!("{} {} {}", cur_base_rate, new_base_rate, log_prior_likelihood_delta);
+
+        MoveResult {
+            log_prior_likelihood_delta,
+            log_hastings_ratio: 0.0,
+            damage: Damage::full(&params.tree.tree),
+            revert: Box::new(revert),
+        }
+    }
+}
+
 pub struct PiOneMove { }
 impl PiOneMove {
     pub fn new() -> Box<Self> {
