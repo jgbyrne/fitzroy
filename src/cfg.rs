@@ -218,6 +218,10 @@ impl Configuration {
 
         propose.add_move(proposal::PiOneMove::new(), 1);
         propose.add_move(proposal::BaseRateMove::new(), 1);
+        propose.add_move(proposal::TreeLocalMove::new(), 1);
+        if self.tree.calibrations.len() > 0 {
+            propose.add_move(proposal::TreeTipMove::new(), 1);
+        }
 
         propose.lock();
         propose

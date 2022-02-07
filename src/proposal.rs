@@ -5,6 +5,7 @@ use crate::util::PriorDist;
 
 use std::boxed::Box;
 use rand::Rng;
+use rand::seq::SliceRandom;
 
 pub struct Propose {
     moves: Vec<Box<dyn Move>>,
@@ -53,7 +54,7 @@ impl Propose {
     }
 }
 
-pub type Revert<'c> = dyn Fn(&'c mut MCMC) -> ();
+pub type Revert<'c> = dyn FnOnce(&'c mut MCMC) -> ();
 
 pub struct MoveResult<'c> {
     pub log_prior_likelihood_delta: f64,
@@ -65,6 +66,307 @@ pub struct MoveResult<'c> {
 pub trait Move {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c>;
 }
+
+// Morph the tree topology using the LOCAL move for rooted trees
+
+pub struct TreeLocalMove { }
+impl TreeLocalMove {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for TreeLocalMove {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        
+        let tree = &mut params.tree.tree;
+
+        // choose an internal edge at random
+        assert!(tree.nodes.len() > 3);
+        let u = loop {
+            let n = engine.rng.gen_range(1..tree.nodes.len());
+            let u = tree.node_parent(n).unwrap();
+            if u != 0 {
+                break u;
+            }
+        };
+
+        let v = tree.node_parent(u).unwrap();
+
+        let a = tree.lchild(u);
+        let b = tree.rchild(u);
+
+        let (c, u_on_left) = if tree.lchild(v) == u {
+            (tree.rchild(v), true)
+        } else {
+            (tree.lchild(v), false)
+        };
+
+        let a_b_c = vec![a, b, c];
+
+        let nodes_backup = vec![tree.nodes[a].clone(),
+                                tree.nodes[b].clone(),
+                                tree.nodes[c].clone(),
+                                tree.nodes[u].clone(),
+                                tree.nodes[v].clone()];
+
+        let mut damage = Damage::blank(&tree);
+        damage.mark_partials_to_root(&tree, a);
+        damage.mark_partials(b);
+        damage.mark_partials(c);
+        damage.mark_matrix(a);
+        damage.mark_matrix(b);
+        damage.mark_matrix(c);
+        damage.mark_matrix(u);
+
+        // case: v is not the root
+        let hastings = if v != 0 {
+            damage.mark_matrix(v);
+
+            let w = tree.node_parent(v).unwrap();
+            let a_dist = tree.dist(w, a);
+            let b_dist = tree.dist(w, b);
+            let c_dist = tree.dist(w, c);
+            let u_dist = tree.dist(w, u);
+            
+            let dists = vec![a_dist, b_dist, c_dist];
+
+            let mut h_ord = vec![(0, a_dist), (1, b_dist), (2, c_dist)];
+            h_ord.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+            let (h1, h2, h3) = (h_ord[0].0, h_ord[1].0, h_ord[2].0);
+
+            let h1_interval = PriorDist::Uniform { low: 0.0, high: dists[h1] };
+            let h2_interval = PriorDist::Uniform { low: 0.0, high: dists[h2] };
+
+            let y = h1_interval.draw(engine);
+            let x = h2_interval.draw(engine);
+
+            let (u_star, v_star) = if x > y {
+                (x, y)
+            }
+            else {
+                (y, x)
+            };
+
+            // u, v heights and edges 
+            tree.nodes[v].length = v_star;
+            tree.nodes[u].length = u_star - v_star;
+
+            tree.nodes[u].height = tree.nodes[w].height - u_star;
+            tree.nodes[v].height = tree.nodes[w].height - v_star;
+
+            if u_star < dists[h1] {
+                // any of {a, b, c} can join to v
+                let v_child = engine.rng.gen_range(0..3);
+                tree.nodes[a_b_c[v_child]].parent = v;
+                tree.nodes[a_b_c[v_child]].length = dists[v_child] - v_star;
+
+                if u_on_left {
+                    tree.nodes[v].rchild = a_b_c[v_child];
+                }
+                else {
+                    tree.nodes[v].lchild = a_b_c[v_child];
+                }
+
+                // the other two join to u
+                let u_lchild = (v_child + 1) % 3;
+                let u_rchild = (v_child + 2) % 3;
+
+                tree.nodes[a_b_c[u_lchild]].parent = u;
+                tree.nodes[a_b_c[u_lchild]].length = dists[u_lchild] - u_star;
+
+                tree.nodes[a_b_c[u_rchild]].parent = u;
+                tree.nodes[a_b_c[u_rchild]].length = dists[u_rchild] - u_star;
+               
+                tree.nodes[u].lchild = a_b_c[u_lchild];
+                tree.nodes[u].rchild = a_b_c[u_rchild];
+
+                // hastings ratio
+                if u_dist > c_dist { 3.0 } else { 1.0 } 
+            }
+            else {
+                // child at h1 must join to v
+                tree.nodes[a_b_c[h1]].parent = v;
+                tree.nodes[a_b_c[h1]].length = dists[h1] - v_star;
+
+                if u_on_left {
+                    tree.nodes[v].rchild = a_b_c[h1];
+                }
+                else {
+                    tree.nodes[v].lchild = a_b_c[h1]
+                }
+
+                tree.nodes[a_b_c[h2]].parent = u;
+                tree.nodes[a_b_c[h2]].length = dists[h2] - u_star;
+
+                tree.nodes[a_b_c[h3]].parent = u;
+                tree.nodes[a_b_c[h3]].length = dists[h3] - u_star;
+               
+                tree.nodes[u].lchild = a_b_c[h2];
+                tree.nodes[u].rchild = a_b_c[h3];
+
+                // hastings ratio
+                if u_dist < c_dist { 1.0 / 3.0 } else { 1.0 }
+            }
+        }
+        else {
+            // v is the root
+            let a_dist = tree.dist(v, a);
+            let b_dist = tree.dist(v, b);
+            let c_dist = tree.dist(v, c);
+            let u_dist = tree.length(u);
+
+            let dists = vec![a_dist, b_dist, c_dist];
+
+            let mut h_ord = vec![(0, a_dist), (1, b_dist), (2, c_dist)];
+            h_ord.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+            let (h1, h2, h3) = (h_ord[0].0, h_ord[1].0, h_ord[2].0);
+
+            let base: f64 = 1.5;
+            let scale = base.powf(PriorDist::Uniform {low: 0.0, high: 1.0}.draw(engine) - 0.5);
+
+            let mut dists_star = vec![0.0, 0.0, 0.0]; 
+            dists_star[h1] = dists[h1] * scale;
+            
+            let delta = dists_star[h1] - dists[h1];
+            dists_star[h2] = dists[h2] + delta;
+            dists_star[h3] = dists[h3] + delta;
+
+            let ratio = dists_star[h1] / dists[h1];
+
+            let u_star = PriorDist::Uniform {low: 0.0, high: dists_star[h2]}.draw(engine);
+
+            // u, v heights and edges 
+            tree.nodes[v].height += delta;
+            tree.nodes[u].length = u_star;
+            tree.nodes[u].height = tree.nodes[v].height - u_star;
+
+            if u_star < dists_star[h1] {
+                 // any of {a, b, c} can join to v
+                let v_child = engine.rng.gen_range(0..3);
+                tree.nodes[a_b_c[v_child]].parent = v;
+                tree.nodes[a_b_c[v_child]].length = dists_star[v_child];
+
+                if u_on_left {
+                    tree.nodes[v].rchild = a_b_c[v_child];
+                }
+                else {
+                    tree.nodes[v].lchild = a_b_c[v_child];
+                }
+
+                // the other two join to u
+                let u_lchild = (v_child + 1) % 3;
+                let u_rchild = (v_child + 2) % 3;
+
+                tree.nodes[a_b_c[u_lchild]].parent = u;
+                tree.nodes[a_b_c[u_lchild]].length = dists_star[u_lchild] - u_star;
+
+                tree.nodes[a_b_c[u_rchild]].parent = u;
+                tree.nodes[a_b_c[u_rchild]].length = dists_star[u_rchild] - u_star;
+               
+                tree.nodes[u].lchild = a_b_c[u_lchild];
+                tree.nodes[u].rchild = a_b_c[u_rchild];
+                
+                // hastings ratio
+                if u_dist > c_dist { 3.0 * ratio } else { ratio }
+            }
+            else {
+                // child at h1 must join to v
+                tree.nodes[a_b_c[h1]].parent = v;
+                tree.nodes[a_b_c[h1]].length = dists_star[h1];
+
+                if u_on_left {
+                    tree.nodes[v].rchild = a_b_c[h1];
+                }
+                else {
+                    tree.nodes[v].lchild = a_b_c[h1]
+                }
+
+                tree.nodes[a_b_c[h2]].parent = u;
+                tree.nodes[a_b_c[h2]].length = dists_star[h2] - u_star;
+
+                tree.nodes[a_b_c[h3]].parent = u;
+                tree.nodes[a_b_c[h3]].length = dists_star[h3] - u_star;
+               
+                tree.nodes[u].lchild = a_b_c[h2];
+                tree.nodes[u].rchild = a_b_c[h3];
+
+                // hastings ratio
+                if u_dist < c_dist { 1.0 / 3.0 } else { 1.0 }
+            }
+        };
+
+        let revert = move |chain: &mut MCMC| {
+            for node in nodes_backup {
+                let id = node.id;
+                chain.params.tree.tree.nodes[id] = node;
+            }
+        };
+
+        MoveResult {
+            log_prior_likelihood_delta: 0.0,
+            log_hastings_ratio: hastings,
+            damage,
+            revert: Box::new(revert),
+        }
+    }
+}
+
+
+// The LOCAL move for rooted trees doesn't ever adjust tip heights
+// This is fine for `present-day` tips, but we need the ability to adjust calibrated tips
+
+pub struct TreeTipMove { }
+impl TreeTipMove {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for TreeTipMove {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        assert!(config.tree.calibrations.len() > 0); // This move should only be added if we have calibrations
+        let (node_id, cfg::Calibration { low, high }) = *config.tree.calibrations.choose(&mut engine.rng).unwrap();
+
+        let cur_height = params.tree.tree.nodes[node_id].height;
+        let cur_length = params.tree.tree.nodes[node_id].length;
+
+        let window = (high - low) / 20.0;
+        let proposal = PriorDist::Uniform { low: cur_height - window, high: cur_height + window };
+        let mut new_height = proposal.draw(engine);
+
+        if new_height > high {
+            new_height = low + (new_height - high);
+        }
+        else if new_height < low {
+            new_height = high + (new_height - low);
+        }
+        
+        let parent_id = params.tree.tree.nodes[node_id].parent;
+        params.tree.tree.nodes[node_id].height = new_height;
+        params.tree.tree.nodes[node_id].length = params.tree.tree.dist(parent_id, node_id);
+
+        let revert = move |chain: &mut MCMC| {
+            let node = &mut chain.params.tree.tree.nodes[node_id];
+            node.height = cur_height;
+            node.length = cur_length;
+        };
+
+        let mut damage = Damage::blank(&params.tree.tree);
+        damage.mark_partials_to_root(&params.tree.tree, node_id);
+        damage.mark_matrix(node_id);
+
+        MoveResult {
+            log_prior_likelihood_delta: 0.0,
+            log_hastings_ratio: 0.0,
+            damage,
+            revert: Box::new(revert),
+        }
+
+    }
+}
+
+// Adjust the trait evolution base rate
 
 pub struct BaseRateMove { }
 impl BaseRateMove {
@@ -83,7 +385,8 @@ impl Move for BaseRateMove {
         };
 
         let nudge = 1.0 / lambda;
-        let proposal = PriorDist::Uniform { low: cur_base_rate - nudge, high: cur_base_rate + nudge };
+        let proposal = PriorDist::Uniform { low: cur_base_rate - nudge,
+                                            high: cur_base_rate + nudge };
         let new_base_rate = proposal.draw(engine);
 
         params.traits.base = new_base_rate;
@@ -98,8 +401,6 @@ impl Move for BaseRateMove {
             new - old
         } else { f64::NEG_INFINITY }; // busted prior
 
-//        println!("{} {} {}", cur_base_rate, new_base_rate, log_prior_likelihood_delta);
-
         MoveResult {
             log_prior_likelihood_delta,
             log_hastings_ratio: 0.0,
@@ -108,6 +409,8 @@ impl Move for BaseRateMove {
         }
     }
 }
+
+// Adjust the substitution model equilibrium frequencies (for binary GTR) 
 
 pub struct PiOneMove { }
 impl PiOneMove {
@@ -156,56 +459,3 @@ impl Move for PiOneMove {
         }
     }
 }
-
-/*
-pub struct RootAgeMove { }
-impl RootAgeMove {
-    pub fn new() -> Box<Self> {
-        Box::new(Self { })
-    }
-}
-
-impl Move for RootAgeMove {
-    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
-        let cur_root = match params.tree.prior {
-            params::TreePriorParams::Uniform { root } => root,
-        };
-
-        let (high, low) = match config.tree.prior {
-            cfg::TreePrior::Uniform { root: PriorDist::Uniform { high, low } } => (high, low),
-            _ => unimplemented!(),
-        };
-
-        let window = (high - low) / 20.0;
-        let proposal = PriorDist::Uniform { low: cur_root - window, high: cur_root + window };
-        let mut new_root = proposal.draw(engine);
-
-        if new_root > high {
-            new_root = low + (new_root - high);
-        }
-        else if new_root < low {
-            new_root = high + (new_root - low);
-        }
-
-        println!("{} {}", cur_root, new_root);
-
-        match params.tree.prior {
-            params::TreePriorParams::Uniform { ref mut root } => { *root = new_root; },
-        };
-
-        let revert = move |chain: &mut MCMC| {
-            match chain.params.tree.prior {
-                params::TreePriorParams::Uniform { ref mut root } => { *root = cur_root; },
-            }
-        };
-
-        MoveResult {
-            log_prior_likelihood_delta: 0.0,
-            log_hastings_ratio: 0.0,
-            damage: Damage::full(&params.tree.tree),
-            revert: Box::new(revert),
-        }
-    }
-}
-*/
-

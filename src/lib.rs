@@ -71,12 +71,13 @@ impl Damage {
 pub struct Engine {
     run: bool,
     rng: ThreadRng,
+    partial_damage: bool,
     inst: Option<beagle::Instance>,
 }
 
 impl Engine {
-    fn forge<'c>(config: &'c cfg::Configuration) -> Self {
-        Engine { run: false, rng: rand::thread_rng(), inst: None }
+    fn forge<'c>(config: &'c cfg::Configuration, partial_damage: bool) -> Self {
+        Engine { run: false, rng: rand::thread_rng(), partial_damage, inst: None }
     }
 
     fn start<'c>(&mut self, config: &'c cfg::Configuration, params: &params::Parameters) -> bool {
@@ -87,7 +88,7 @@ impl Engine {
         let n_tips = config.tree.data.num_tips() as i32;
         let n_nodes = (n_tips * 2) - 1; //TODO trial buffers
         let mut inst = beagle::Instance::new(2, n_sites, 4, n_nodes, n_tips, 1,
-                                             true, true, false);
+                                             true, true, self.partial_damage);
 
         for tip in &config.tree.data.tips {
             let tip_beagle_id = params.tree.tree.beagle_id(tip.id);
@@ -121,7 +122,7 @@ pub struct MCMC<'c> {
 
 impl<'c> MCMC<'c> {
     pub fn new(config: &'c cfg::Configuration) -> Self {
-        let mut engine = Engine::forge(&config);
+        let mut engine = Engine::forge(&config, true);
         let params = config.draw(&mut engine);
         let propose = config.get_moves();
         
@@ -139,7 +140,7 @@ impl<'c> MCMC<'c> {
     }
 
     pub fn clone(&self) -> Self {
-        let mut engine = Engine::forge(&self.config);
+        let mut engine = Engine::forge(&self.config, self.engine.partial_damage);
         engine.start(&self.config, &self.params);
 
         Self {
@@ -151,11 +152,26 @@ impl<'c> MCMC<'c> {
         }
     }
 
+    pub fn flip_by_damage(&mut self, damage: &Damage) {
+        let inst = self.engine.beagle_mut();
+        for node in 0..self.params.tree.tree.nodes.len() {
+            let beagle_id = self.params.tree.tree.beagle_id(node);
+            if damage.is_marked_partials(node) { inst.flip_alt_partials(beagle_id) }
+            if node != 0 && damage.is_marked_matrix(node) { inst.flip_alt_matrix(beagle_id); /* println!("\tFlipping: {}", beagle_id); */ }
+        }
+    }
+
     pub fn step(&mut self) {
         let result = self.propose.make_move(&self.config, &mut self.params, &mut self.engine);
+        if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
 
         let accepted = if result.log_prior_likelihood_delta != f64::NEG_INFINITY {
-            let likelihood = self.log_likelihood_with_damage(&result.damage);
+            let likelihood = if self.engine.partial_damage {
+                self.log_likelihood_with_damage(&result.damage)
+            } else {
+                self.log_likelihood()
+            };
+
             let likelihood_delta = likelihood - self.last_log_likelihood;
             let log_ratio = result.log_prior_likelihood_delta + likelihood_delta + result.log_hastings_ratio;
 
@@ -165,7 +181,11 @@ impl<'c> MCMC<'c> {
             } else { false }
         } else { false };
 
-        if !accepted { (result.revert)(self); }
+        if !accepted { 
+            //println!("\t...revert");
+            if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
+            (result.revert)(self);
+        }
     }
 
     pub fn log_likelihood_with_damage(&mut self, damage: &Damage) -> f64 {
@@ -173,7 +193,7 @@ impl<'c> MCMC<'c> {
 
         let updates = tree.beagle_edge_updates(self.params.traits.base, damage);
         let ops = tree.beagle_operations(&mut self.engine, damage);
-        
+       
         let inst = self.engine.beagle_mut();
         inst.set_models(&vec![self.params.traits.model()]);
         inst.update_matrices(updates);

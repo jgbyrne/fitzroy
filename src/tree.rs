@@ -49,6 +49,10 @@ impl Tree {
         ctr
     }
 
+    pub fn dist(&self, a: usize, b: usize) -> f64 {
+        self.nodes[a].height - self.nodes[b].height
+    }
+
     pub fn length(&self, id: usize) -> f64 {
         self.nodes[id].length
     }
@@ -96,8 +100,6 @@ impl Tree {
         for node_id in self.level_order().iter().rev() {
             if !self.is_leaf(*node_id)  && damage.is_marked_partials(*node_id) {
                 let node   = &self.nodes[*node_id];
-                let l_node = &self.nodes[node.lchild];
-                let r_node = &self.nodes[node.rchild];
 
                 let b_node  = self.beagle_id(*node_id);
                 let b_left  = self.beagle_id(node.lchild);
