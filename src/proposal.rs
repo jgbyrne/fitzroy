@@ -91,6 +91,8 @@ impl Move for TreeLocalMove {
             }
         };
 
+        let u_clade = tree.nodes[u].clade;
+
         let v = tree.node_parent(u).unwrap();
 
         let a = tree.lchild(u);
@@ -303,8 +305,12 @@ impl Move for TreeLocalMove {
             }
         };
 
+        let log_prior_likelihood_delta = if u_clade && tree.nodes[c].parent != v {
+            f64::NEG_INFINITY
+        } else { 0.0 };
+
         MoveResult {
-            log_prior_likelihood_delta: 0.0,
+            log_prior_likelihood_delta,
             log_hastings_ratio: hastings,
             damage,
             revert: Box::new(revert),

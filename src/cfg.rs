@@ -37,10 +37,17 @@ pub struct Calibration {
 }
 
 #[derive(Debug)]
+pub struct Constraint {
+    pub tips: Vec<usize>,
+    pub ancestor: Option<usize>,
+}
+
+#[derive(Debug)]
 pub struct TreeModel {
     pub prior: TreePrior,
     pub data: tree::TreeData,
     pub calibrations: Vec<(usize, Calibration)>,
+    pub constraints: Vec<Constraint>,
 }
 
 impl TreeModel {
@@ -60,7 +67,7 @@ impl TreeModel {
         let mut active = vec![]; 
         for tip in &self.data.tips {
             nodes.push(tree::TreeNode { id: tip.id, parent: 0, lchild: 0, rchild: 0,
-                                        length: 0.0, height: 0.0});
+                                        length: 0.0, height: 0.0, clade: false });
             active.push(tip.id);
         }
 
