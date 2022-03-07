@@ -161,7 +161,7 @@ impl<'c> MCMC<'c> {
         }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> bool {
         let result = self.propose.make_move(&self.config, &mut self.params, &mut self.engine);
         if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
 
@@ -171,6 +171,10 @@ impl<'c> MCMC<'c> {
             } else {
                 self.log_likelihood()
             };
+
+            if likelihood > 0.0 { // something has gone very wrong...
+                return false; 
+            }
 
             let likelihood_delta = likelihood - self.last_log_likelihood;
             let log_ratio = result.log_prior_likelihood_delta + likelihood_delta + result.log_hastings_ratio;
@@ -186,12 +190,20 @@ impl<'c> MCMC<'c> {
             if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
             (result.revert)(self);
         }
+
+        true 
     }
 
     pub fn log_likelihood_with_damage(&mut self, damage: &Damage) -> f64 {
         let tree = &self.params.tree.tree;
 
-        let updates = tree.beagle_edge_updates(self.params.traits.base, damage);
+        let abrv = if self.config.traits.abrv.enabled {
+            Some(&self.params.traits.abrv)
+        } else {
+            None
+        };
+
+        let updates = tree.beagle_edge_updates(self.params.traits.base, abrv, damage);
         let ops = tree.beagle_operations(&mut self.engine, damage);
        
         let inst = self.engine.beagle_mut();
@@ -204,6 +216,14 @@ impl<'c> MCMC<'c> {
 
     pub fn log_likelihood(&mut self) -> f64 {
         self.log_likelihood_with_damage(&Damage::full(&self.params.tree.tree))
+    }
+
+    pub fn log_prior_likelihood(&mut self) -> f64 {
+        self.config.log_prior_likelihood(&mut self.params)
+    }
+
+    pub fn log_posterior_likelihood(&mut self) -> f64 {
+        self.log_likelihood() + self.log_prior_likelihood()
     }
 }
 

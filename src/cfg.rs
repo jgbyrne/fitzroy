@@ -3,7 +3,7 @@ use crate::tree;
 use crate::params;
 
 use crate::Engine;
-use crate::util::PriorDist;
+use crate::util::{PriorDist, log_normal_categories};
 
 use std::boxed::Box;
 
@@ -11,7 +11,7 @@ use rand::Rng;
 use rand::seq::SliceRandom;
 use rand::distributions::Distribution;
 
-use statrs::distribution::{Exp, Continuous};
+use statrs::distribution::{Exp, Continuous, Gamma, ContinuousCDF};
 
 #[derive(Debug)]
 pub enum TreePrior {
@@ -138,6 +138,11 @@ impl TreeModel {
         }
 
     }
+
+    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+        0.0
+    }
+
 }
 
 #[derive(Debug)]
@@ -153,22 +158,78 @@ impl SubstitutionModel {
             },
         }
     }
+
+    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+        let pi_one_param = match params.traits.subst {
+            params::SubstitutionModelParams::BinaryGTR { pi_one } => pi_one,
+        };
+        match self {
+            SubstitutionModel::BinaryGTR { ref pi_one } => pi_one.log_density(pi_one_param)
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct ASRV {
     pub enabled: bool,
     pub shape: PriorDist,
+    pub ncats: usize,
 }
 
 impl ASRV {
+    pub fn params_for_shape(&self, shape: f64) -> params::ASRVParams {
+        let f_ncats = self.ncats as f64; // we c# now
+
+        let alpha = shape;
+        let beta = 1.0 / alpha;
+
+        let gamma = Gamma::new(alpha, beta).unwrap();
+
+        let mut cuts = Vec::with_capacity(self.ncats);
+        cuts.push(0.0);
+        for i in 1..self.ncats {
+            let frac = (i as f64) / f_ncats; 
+            // inverse_cdf is equivalent to boost's quantile
+            // however it is a generic implementation (binary search)
+            // and is probably slow and inaccurate
+            // would be better to use something bespoke
+            cuts.push(gamma.inverse_cdf(frac));
+        }
+
+        let gamma_plus = Gamma::new(alpha + 1.0, beta).unwrap();
+        let mut plus_cdf_points = Vec::with_capacity(self.ncats + 1);
+        plus_cdf_points.push(0.0);
+        for i in 1..self.ncats {
+            plus_cdf_points.push(gamma_plus.cdf(cuts[i]));
+        }
+        plus_cdf_points.push(1.0);
+
+        let mut rates = Vec::with_capacity(self.ncats);
+        for i in 0..self.ncats {
+            let numerator = plus_cdf_points[i+1] - plus_cdf_points[i];
+            // denominator is demonstrably always 1/ncats
+            rates.push(numerator * f_ncats);
+        }
+
+        params::ASRVParams { shape, rates }
+    }
+
     pub fn draw(&self, engine: &mut Engine, sites: i32) -> params::ASRVParams {
         if !self.enabled {
-            return params::ASRVParams { shape: 0.0, rates: vec![] }
+            let rates = (0..self.ncats).map(|_| 1.0).collect::<Vec<f64>>();
+            return params::ASRVParams { shape: 0.0, rates: rates }
         }
-        //TODO
-        /*let shape = self.shape.draw(); */
-        params::ASRVParams { shape: 0.0, rates: vec![] }
+        let shape = self.shape.draw(engine);
+        self.params_for_shape(shape)
+    }
+
+    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+        if self.enabled {
+            self.shape.log_density(params.traits.asrv.shape)
+        }
+        else {
+            0.0
+        }
     }
 }
 
@@ -179,9 +240,31 @@ pub struct ABRV {
 }
 
 impl ABRV {
-    pub fn draw(&self, engine: &mut Engine) -> params::ABRVParams {
-        //TODO
-        params::ABRVParams { shape: 0.0 }
+    pub fn draw(&self, engine: &mut Engine, ntips: usize) -> params::ABRVParams {
+        if !self.enabled {
+            return params::ABRVParams { shape: 0.0,
+                                        rates: vec![],
+                                        assignment: vec![] };
+        }
+
+        let shape = self.shape.draw(engine);
+        let rates = log_normal_categories(shape, 2 * ntips - 2);
+        let mut assignment = vec![usize::MAX]; // first value should be invalid
+
+        let mut cat_idxs: Vec<usize> = (0..(2 * ntips - 2)).collect();
+        cat_idxs.shuffle(&mut engine.rng);
+        assignment.extend(cat_idxs);
+
+        params::ABRVParams { shape, rates, assignment }
+    }
+
+    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+        if self.enabled {
+            self.shape.log_density(params.traits.abrv.shape)
+        }
+        else {
+            0.0
+        }
     }
 }
 
@@ -195,14 +278,23 @@ pub struct TraitsModel {
 }
 
 impl TraitsModel {
-    pub fn draw(&self, engine: &mut Engine, data_traits: i32) -> params::TraitsParams {
+    pub fn draw(&self, engine: &mut Engine, data_traits: i32, num_tips: usize) -> params::TraitsParams {
         params::TraitsParams {
             num_traits: data_traits, //TODO impl num traits prior
             subst: self.subst.draw(engine),
             base: self.base.draw(engine),
             asrv: self.asrv.draw(engine, data_traits),
-            abrv: self.abrv.draw(engine),
+            abrv: self.abrv.draw(engine, num_tips),
         }
+    }
+
+    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+         let log_prior_base = self.base.log_density(params.traits.base); 
+         let log_prior_asrv = self.asrv.log_prior_likelihood(params);
+         let log_prior_abrv = self.abrv.log_prior_likelihood(params);
+         let log_prior_subst = self.subst.log_prior_likelihood(params);
+
+         log_prior_base + log_prior_asrv + log_prior_abrv + log_prior_subst
     }
 }
 
@@ -216,8 +308,12 @@ impl Configuration {
     pub fn draw(&self, engine: &mut Engine) -> params::Parameters {
         params::Parameters {
             tree: self.tree.draw(engine),
-            traits: self.traits.draw(engine, self.tree.data.traits),
+            traits: self.traits.draw(engine, self.tree.data.traits, self.tree.data.num_tips()),
         }
+    }
+
+    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+        self.tree.log_prior_likelihood(params) + self.traits.log_prior_likelihood(params)
     }
 
     pub fn get_moves(&self) -> proposal::Propose {
@@ -225,9 +321,19 @@ impl Configuration {
 
         propose.add_move(proposal::PiOneMove::new(), 1);
         propose.add_move(proposal::BaseRateMove::new(), 1);
-        propose.add_move(proposal::TreeLocalMove::new(), 1);
+        propose.add_move(proposal::TreeLocalMove::new(), 4);
+
         if self.tree.calibrations.len() > 0 {
-            propose.add_move(proposal::TreeTipMove::new(), 1);
+            propose.add_move(proposal::TreeTipMove::new(), 2);
+        }
+
+        if self.traits.asrv.enabled {
+            propose.add_move(proposal::ASRVShapeMove::new(), 1);
+        }
+
+        if self.traits.abrv.enabled {
+            propose.add_move(proposal::ABRVShapeMove::new(), 1);
+            propose.add_move(proposal::ABRVCategorySwap::new(), 2);
         }
 
         propose.lock();

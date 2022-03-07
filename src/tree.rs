@@ -115,16 +115,16 @@ impl Tree {
         op_vec
     }
 
-    // TODO this will probably need to accept a rate vector...
-    pub fn beagle_edge_updates(&self, base_rate: f64, damage: &Damage) -> Vec<beagle::MatrixUpdate> {
+    pub fn beagle_edge_updates(&self, base_rate: f64, abrv: Option<&params::ABRVParams>, damage: &Damage) -> Vec<beagle::MatrixUpdate> {
         // skip root (0)
         let mut updates = vec![];
         for tree_node in 1..self.nodes.len() {
+            let get_branch_rate = |abrv: &params::ABRVParams| abrv.rates[abrv.assignment[tree_node]];
             if damage.is_marked_matrix(tree_node) {
                 updates.push(beagle::MatrixUpdate {
                     model_id: 0,
                     node_id: self.beagle_id(tree_node),
-                    edge_length: self.nodes[tree_node].length * base_rate,
+                    edge_length: self.nodes[tree_node].length * base_rate * abrv.map_or(1.0, get_branch_rate),
                 });
             }
         }

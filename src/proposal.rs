@@ -1,7 +1,7 @@
 use crate::{MCMC, Engine, Damage};
 use crate::params;
 use crate::cfg;
-use crate::util::PriorDist;
+use crate::util::{PriorDist, log_normal_categories};
 
 use std::boxed::Box;
 use rand::Rng;
@@ -372,6 +372,147 @@ impl Move for TreeTipMove {
     }
 }
 
+// ABRV swap two rate categories
+
+pub struct ABRVCategorySwap {}
+impl ABRVCategorySwap {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for ABRVCategorySwap {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        assert!(config.traits.abrv.enabled);
+
+        let cur_assignment = params.traits.abrv.assignment.clone();
+        let node_max = 2 * config.tree.data.num_tips() - 1;
+        
+        let node1 = engine.rng.gen_range(1..node_max); // 1..=2n-2 
+        let mut node2 = node1;
+        while node2 == node1 {
+            node2 = engine.rng.gen_range(1..node_max);
+        }
+
+        params.traits.abrv.assignment.swap(node1, node2);
+
+        let revert = move |chain: &mut MCMC| {
+            chain.params.traits.abrv.assignment = cur_assignment;
+        };
+
+        let mut damage = Damage::blank(&params.tree.tree);
+        damage.mark_matrix(node1);
+        damage.mark_matrix(node2);
+        damage.mark_partials_to_root(&params.tree.tree, node1);
+        damage.mark_partials_to_root(&params.tree.tree, node2);
+
+        MoveResult {
+            log_prior_likelihood_delta: 0.0,
+            log_hastings_ratio: 0.0,
+            damage,
+            revert: Box::new(revert),
+        }
+    }
+}
+
+
+// Adjust the ASRV shape 
+
+pub struct ASRVShapeMove { }
+impl ASRVShapeMove {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for ASRVShapeMove {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        assert!(config.traits.asrv.enabled);
+
+        let cur_asrv_shape = params.traits.asrv.shape;
+
+        let lambda = match config.traits.asrv.shape {
+            PriorDist::Exponential { l }  => l,
+            _ => unimplemented!(),
+        };
+
+        let nudge = 1.0 / lambda;
+        let proposal = PriorDist::Uniform { low: cur_asrv_shape - nudge,
+                                            high: cur_asrv_shape + nudge };
+        let new_asrv_shape = proposal.draw(engine);
+
+        params.traits.asrv = config.traits.asrv.params_for_shape(new_asrv_shape);
+
+        let revert = move |chain: &mut MCMC| {
+            chain.params.traits.asrv.shape = cur_asrv_shape;
+        };
+
+        let log_prior_likelihood_delta = if new_asrv_shape > 0.0 {
+            let old = config.traits.asrv.shape.log_density(cur_asrv_shape);
+            let new = config.traits.asrv.shape.log_density(new_asrv_shape);
+            new - old
+        } else { f64::NEG_INFINITY }; // busted prior
+
+        MoveResult {
+            log_prior_likelihood_delta,
+            log_hastings_ratio: 0.0,
+            damage: Damage::full(&params.tree.tree),
+            revert: Box::new(revert),
+        }
+    }
+}
+
+// Adjust the ABRV shape 
+
+pub struct ABRVShapeMove { }
+impl ABRVShapeMove {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for ABRVShapeMove {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        assert!(config.traits.abrv.enabled);
+
+        let cur_abrv_shape = params.traits.abrv.shape;
+        let cur_abrv_rates = params.traits.abrv.rates.clone();
+
+        let lambda = match config.traits.abrv.shape {
+            PriorDist::Exponential { l }  => l,
+            _ => unimplemented!(),
+        };
+
+        let nudge = 1.0 / lambda;
+        let proposal = PriorDist::Uniform { low: cur_abrv_shape - nudge,
+                                            high: cur_abrv_shape + nudge };
+        let new_abrv_shape = proposal.draw(engine);
+
+        let n_edges = 2 * config.tree.data.num_tips() - 2;
+        params.traits.abrv.rates = log_normal_categories(new_abrv_shape, n_edges);
+
+        let revert = move |chain: &mut MCMC| {
+            chain.params.traits.abrv.shape = cur_abrv_shape;
+            chain.params.traits.abrv.rates = cur_abrv_rates;
+        };
+
+        let log_prior_likelihood_delta = if new_abrv_shape > 0.0 {
+            let old = config.traits.abrv.shape.log_density(cur_abrv_shape);
+            let new = config.traits.abrv.shape.log_density(new_abrv_shape);
+            new - old
+        } else { f64::NEG_INFINITY }; // busted prior
+
+        MoveResult {
+            log_prior_likelihood_delta,
+            log_hastings_ratio: 0.0,
+            damage: Damage::full(&params.tree.tree),
+            revert: Box::new(revert),
+        }
+    }
+}
+
+
+
 // Adjust the trait evolution base rate
 
 pub struct BaseRateMove { }
@@ -402,8 +543,8 @@ impl Move for BaseRateMove {
         };
 
         let log_prior_likelihood_delta = if new_base_rate > 0.0 {
-            let old = config.traits.base.log_density(engine, cur_base_rate);
-            let new = config.traits.base.log_density(engine, new_base_rate);
+            let old = config.traits.base.log_density(cur_base_rate);
+            let new = config.traits.base.log_density(new_base_rate);
             new - old
         } else { f64::NEG_INFINITY }; // busted prior
 
@@ -458,7 +599,7 @@ impl Move for PiOneMove {
         };
 
         MoveResult {
-            log_prior_likelihood_delta: 0.0,
+            log_prior_likelihood_delta: 0.0, // we happen to know we have a uniform prior
             log_hastings_ratio: 0.0,
             damage: Damage::full(&params.tree.tree),
             revert: Box::new(revert),

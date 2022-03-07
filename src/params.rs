@@ -26,6 +26,8 @@ pub struct ASRVParams {
 #[derive(Clone, Debug)]
 pub struct ABRVParams {
     pub shape: f64,
+    pub rates: Vec<f64>,  // Vec[2n - 2] for n leaves
+    pub assignment: Vec<usize>, // Vec[2n - 1] but first (root) entry invalid
 }
 
 #[derive(Clone, Debug)]
@@ -66,7 +68,7 @@ impl TraitsParams {
             eigenvectors: evecs,
             inv_eigenvectors: inv_evecs,
 
-            category_rates: vec![1.0, 1.0, 1.0, 1.0],
+            category_rates: self.asrv.rates.clone(),
             category_probs: vec![0.25, 0.25, 0.25, 0.25],
         }
     }
