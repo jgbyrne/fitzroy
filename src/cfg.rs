@@ -140,7 +140,30 @@ impl TreeModel {
     }
 
     pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
-        0.0
+        let mut high = 0;
+        let mut high_val = 0.0;
+        let mut low = 0;
+        let mut low_val = f64::MAX;
+        for tip in 1..=self.data.num_tips() {
+            let h = params.tree.tree.nodes[tip].height;
+            if h >= high_val {
+                high_val = h;
+                high = tip;
+            }
+            if h < low_val {
+                low_val = h;
+                low = tip;
+            }
+        }
+        assert!(high != low);
+        let mut product = 0.0;
+        // we are going to skip the highest and lowest tip
+        for tip in 1..=self.data.num_tips() {
+            if (tip != high) && (tip != low) {
+                product += (1.0/params.tree.tree.dist(0, tip)).ln();
+            }
+        }
+        product
     }
 
 }

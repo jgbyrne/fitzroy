@@ -78,7 +78,8 @@ impl TreeLocalMove {
 
 impl Move for TreeLocalMove {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
-        
+        let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
+
         let tree = &mut params.tree.tree;
 
         // choose an internal edge at random
@@ -307,7 +308,9 @@ impl Move for TreeLocalMove {
 
         let log_prior_likelihood_delta = if u_clade && tree.nodes[c].parent != v {
             f64::NEG_INFINITY
-        } else { 0.0 };
+        } else { 
+            config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
+        };
 
         MoveResult {
             log_prior_likelihood_delta,
@@ -333,6 +336,8 @@ impl Move for TreeTipMove {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
         assert!(config.tree.calibrations.len() > 0); // This move should only be added if we have calibrations
         let (node_id, cfg::Calibration { low, high }) = *config.tree.calibrations.choose(&mut engine.rng).unwrap();
+
+        let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
         let cur_height = params.tree.tree.nodes[node_id].height;
         let cur_length = params.tree.tree.nodes[node_id].length;
@@ -363,7 +368,7 @@ impl Move for TreeTipMove {
         damage.mark_matrix(node_id);
 
         MoveResult {
-            log_prior_likelihood_delta: 0.0,
+            log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
             log_hastings_ratio: 0.0,
             damage,
             revert: Box::new(revert),
@@ -439,15 +444,15 @@ impl Move for ASRVShapeMove {
         let nudge = 1.0 / lambda;
         let proposal = PriorDist::Uniform { low: cur_asrv_shape - nudge,
                                             high: cur_asrv_shape + nudge };
-        let new_asrv_shape = proposal.draw(engine);
 
-        params.traits.asrv = config.traits.asrv.params_for_shape(new_asrv_shape);
+        let new_asrv_shape = proposal.draw(engine);
 
         let revert = move |chain: &mut MCMC| {
             chain.params.traits.asrv.shape = cur_asrv_shape;
         };
 
         let log_prior_likelihood_delta = if new_asrv_shape > 0.0 {
+            params.traits.asrv = config.traits.asrv.params_for_shape(new_asrv_shape);
             let old = config.traits.asrv.shape.log_density(cur_asrv_shape);
             let new = config.traits.asrv.shape.log_density(new_asrv_shape);
             new - old
