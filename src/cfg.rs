@@ -16,6 +16,7 @@ use statrs::distribution::{Exp, Continuous, Gamma, ContinuousCDF};
 #[derive(Debug)]
 pub enum TreePrior {
     Uniform { root: PriorDist },
+    Coalescent { num_intervals: usize },
 }
 
 impl TreePrior {
@@ -25,7 +26,9 @@ impl TreePrior {
                 params::TreePriorParams::Uniform {
                     root: root.draw(engine),
                 }
-            }
+            },
+            Self::Coalescent { num_intervals } { 
+            },
         }
     }
 }

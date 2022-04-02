@@ -4,6 +4,7 @@ use beagle;
 #[derive(Clone)]
 pub enum TreePriorParams { 
     Uniform { root: f64 },
+    Coalescent { sizes: Vec<usize>, pops: Vec<f64> },
 }
 
 #[derive(Clone)]
