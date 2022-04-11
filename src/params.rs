@@ -1,13 +1,13 @@
 use crate::tree;
 use beagle;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TreePriorParams { 
     Uniform { root: f64 },
-    Coalescent { sizes: Vec<usize>, pops: Vec<f64> },
+    Coalescent { sizes: Vec<(usize)>, pops: Vec<f64> },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TreeParams {
     pub prior: TreePriorParams,
     pub tree: tree::Tree,

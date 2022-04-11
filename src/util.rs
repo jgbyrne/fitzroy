@@ -4,7 +4,7 @@ use rand::Rng;
 use rand::seq::SliceRandom;
 use rand::distributions::Distribution;
 
-use statrs::distribution::{Exp, Continuous};
+use statrs::distribution::{Exp, Continuous, Gamma, Normal};
 use statrs::function::erf;
 
 #[derive(Debug)]
@@ -12,6 +12,8 @@ pub enum PriorDist {
     Reciprocal,
     Uniform { low: f64, high: f64 },
     Exponential { l: f64 },
+    Gamma { alpha: f64, beta: f64 },
+    Normal { mean: f64, sigma: f64 },
 }
 
 impl PriorDist {
@@ -28,6 +30,14 @@ impl PriorDist {
                 let dist = Exp::new(*l).unwrap();
                 dist.sample(&mut engine.rng)
             },
+            PriorDist::Gamma { alpha, beta } => {
+                let dist = Gamma::new(*alpha, *beta).unwrap();
+                dist.sample(&mut engine.rng)
+            },
+            PriorDist::Normal { mean, sigma } => {
+                let dist = Normal::new(*mean, *sigma).unwrap();
+                dist.sample(&mut engine.rng)
+            },
         }
     }
 
@@ -41,6 +51,14 @@ impl PriorDist {
             },
             PriorDist::Exponential { l } => {
                 let dist = Exp::new(*l).unwrap();
+                dist.ln_pdf(x)
+            },
+            PriorDist::Gamma { alpha, beta } => {
+                let dist = Gamma::new(*alpha, *beta).unwrap();
+                dist.ln_pdf(x)
+            },
+            PriorDist::Normal { mean, sigma } => {
+                let dist = Normal::new(*mean, *sigma).unwrap();
                 dist.ln_pdf(x)
             },
         }

@@ -27,7 +27,12 @@ impl TreePrior {
                     root: root.draw(engine),
                 }
             },
-            Self::Coalescent { num_intervals } { 
+            Self::Coalescent { num_intervals } => { 
+                params::TreePriorParams::Coalescent {
+                    // dummy value to be replaced when we know the interval count
+                    sizes: (0..*num_intervals).map(|_| 1).collect::<Vec<usize>>(),
+                    pops: (0..*num_intervals).map(|_| 1.0).collect::<Vec<f64>>(),
+                }
             },
         }
     }
@@ -55,15 +60,18 @@ pub struct TreeModel {
 
 impl TreeModel {
     pub fn draw(&self, engine: &mut Engine) -> params::TreeParams {
-        let prior = self.prior.draw(engine);
+        let mut prior = self.prior.draw(engine);
         let mut root_node = tree::TreeNode::blank();
 
-        // unsure what to do for priors not conditions on tmrca...
         match prior {
             params::TreePriorParams::Uniform { root } => {
                 root_node.height = root;
                 root_node.length = 1.0;
-            }
+            },
+            params::TreePriorParams::Coalescent { ref sizes, ref pops } => {
+                root_node.height = self.calibrations.iter().map(|(_, c)| c.high).fold(0.0, |a: f64, b: f64| a.max(b)) * 1.1;
+                root_node.length = 1.0;
+            },
         }
 
         let mut nodes: Vec<tree::TreeNode> = vec![root_node];
@@ -134,6 +142,27 @@ impl TreeModel {
         }
 
         let tree = tree::Tree { nodes };
+        let intervals = tree.intervals();
+
+        // update coalescent prior with default interval sizes
+        match prior {
+            params::TreePriorParams::Coalescent { ref mut sizes, ref pops } => {
+                if let TreePrior::Coalescent { num_intervals } = self.prior {
+
+                    let coalescents = tree.coalescents();
+                    let some_coals = coalescents.len() / num_intervals;
+                    *sizes = vec![];
+
+                    for i in (0..num_intervals - 1) {
+                        let ceil = some_coals * (i + 1);
+                        sizes.push(ceil - 1);
+                    }
+
+                    sizes.push(coalescents.len() - 1);
+                } else { unreachable!() }
+            },
+            _ => {}, 
+        }
 
         params::TreeParams {
             prior,
@@ -143,30 +172,92 @@ impl TreeModel {
     }
 
     pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
-        let mut high = 0;
-        let mut high_val = 0.0;
-        let mut low = 0;
-        let mut low_val = f64::MAX;
-        for tip in 1..=self.data.num_tips() {
-            let h = params.tree.tree.nodes[tip].height;
-            if h >= high_val {
-                high_val = h;
-                high = tip;
-            }
-            if h < low_val {
-                low_val = h;
-                low = tip;
-            }
+        match self.prior {
+            TreePrior::Uniform { ref root } => {
+                let mut high = 0;
+                let mut high_val = 0.0;
+                let mut low = 0;
+                let mut low_val = f64::MAX;
+                for tip in 1..=self.data.num_tips() {
+                    let h = params.tree.tree.nodes[tip].height;
+                    if h >= high_val {
+                        high_val = h;
+                        high = tip;
+                    }
+                    if h < low_val {
+                        low_val = h;
+                        low = tip;
+                    }
+                }
+                assert!(high != low);
+                let mut product = 0.0;
+                // we are going to skip the highest and lowest tip
+                for tip in 1..=self.data.num_tips() {
+                    if (tip != high) && (tip != low) {
+                        product += (1.0/params.tree.tree.dist(0, tip)).ln();
+                    }
+                }
+
+                if let params::TreePriorParams::Uniform { ref mut root } = params.tree.prior {
+                    *root = params.tree.tree.nodes[0].height; 
+                    product -= root.ln();
+                } else { unreachable!() }
+
+                product
+            },
+            TreePrior::Coalescent { num_intervals } => {
+                if let params::TreePriorParams::Coalescent { ref sizes, ref pops } = params.tree.prior {
+                    let intervals = params.tree.tree.intervals();
+                    let coalescents = params.tree.tree.coalescents();
+
+                    let mut product = 0.0;
+                    
+                    let mut gi_ptr = 0;
+                    let mut gi_final = coalescents[sizes[gi_ptr]].2;
+
+                    let mut switch = false;
+
+                    for (i, interval) in intervals.iter().enumerate() {
+                        if switch {
+                            gi_ptr += 1;
+                            gi_final = coalescents[sizes[gi_ptr]].2;
+                            switch = false;
+                        }
+
+                        let k_i = interval.lineages;
+                        let pop = pops[gi_ptr];
+
+                        let k_i_choose_2 = ((k_i * (k_i - 1)) as f64) / 2.0;
+
+                        let k_i_choose_2_div_pop = k_i_choose_2 / pop;
+
+                        let term1 = if interval.coalescent {
+                            k_i_choose_2_div_pop.ln()
+                        }
+                        else { 0.0 };
+
+                        let term2 = k_i_choose_2_div_pop * interval.width;
+
+                        product += term1 - term2;
+
+                        if i == gi_final {
+                            switch = true;
+                        }
+                    }
+
+                    // population prior
+
+                    product -= pops[0].ln();
+                    for j in 1..num_intervals {
+                        product += pops[j-1].ln();
+                        product -= pops[j] / pops[j-1]
+                    }
+
+                    product
+
+                } else { unreachable!() }
+            },
         }
-        assert!(high != low);
-        let mut product = 0.0;
-        // we are going to skip the highest and lowest tip
-        for tip in 1..=self.data.num_tips() {
-            if (tip != high) && (tip != low) {
-                product += (1.0/params.tree.tree.dist(0, tip)).ln();
-            }
-        }
-        product
     }
 
 }
@@ -345,21 +436,30 @@ impl Configuration {
     pub fn get_moves(&self) -> proposal::Propose {
         let mut propose = proposal::Propose::empty();
 
-        propose.add_move(proposal::PiOneMove::new(), 1);
-        propose.add_move(proposal::BaseRateMove::new(), 1);
-        propose.add_move(proposal::TreeLocalMove::new(), 4);
+        propose.add_move("Pi One", proposal::PiOneMove::new(), 1);
+        propose.add_move("Base Rate", proposal::BaseRateMove::new(), 1);
+        propose.add_move("Tree LOCAL", proposal::TreeLocalMove::new(), 3);
+
+        match self.tree.prior {
+             TreePrior::Coalescent { .. } => {
+                 propose.add_move("Coal Interval Resize", proposal::CoalescentIntervalResize::new(), 1);
+                 propose.add_move("Coal Population Rescale", proposal::CoalescentPopulationRescale::new(), 1);
+                 propose.add_move("Coal Population Augment", proposal::CoalescentPopulationAugment::new(), 1);
+             },
+             TreePrior::Uniform { .. } => {},
+        }
 
         if self.tree.calibrations.len() > 0 {
-            propose.add_move(proposal::TreeTipMove::new(), 2);
+            propose.add_move("Tree Tip", proposal::TreeTipMove::new(), 2);
         }
 
         if self.traits.asrv.enabled {
-            propose.add_move(proposal::ASRVShapeMove::new(), 1);
+            propose.add_move("ASRV Shape", proposal::ASRVShapeMove::new(), 1);
         }
 
         if self.traits.abrv.enabled {
-            propose.add_move(proposal::ABRVShapeMove::new(), 1);
-            propose.add_move(proposal::ABRVCategorySwap::new(), 2);
+            propose.add_move("ABRV Shape", proposal::ABRVShapeMove::new(), 1);
+            propose.add_move("ABRV Category", proposal::ABRVCategorySwap::new(), 2);
         }
 
         propose.lock();

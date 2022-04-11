@@ -7,8 +7,9 @@ use std::boxed::Box;
 use rand::Rng;
 use rand::seq::SliceRandom;
 
+
 pub struct Propose {
-    moves: Vec<Box<dyn Move>>,
+    pub moves: Vec<(Box<dyn Move>, &'static str, usize, usize)>,
     weights: Vec<usize>,
     probs: Vec<f32>,
     locked: bool,
@@ -24,9 +25,9 @@ impl Propose {
         }
     }
 
-    pub fn add_move(&mut self, mv: Box<dyn Move>, weight: usize) {
+    pub fn add_move(&mut self, name: &'static str, mv: Box<dyn Move>, weight: usize) {
         assert!(!self.locked);
-        self.moves.push(mv);
+        self.moves.push((mv, name, 0, 0));
         self.weights.push(weight);
     }
 
@@ -40,17 +41,24 @@ impl Propose {
         self.locked = true;
     }
 
-    pub fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+    pub fn make_move<'c>(&mut self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> (MoveResult<'c>, usize) {
         assert!(self.locked);
         let target: f32 = engine.rng.gen();
         let mut acc = 0.0;
         for i in 0..self.moves.len() {
             acc += self.probs[i];
             if acc > target {
-                return self.moves[i].make_move(config, params, engine);
+                self.moves[i].2 += 1;
+                return (self.moves[i].0.make_move(config, params, engine), i);
             }
         }
         unreachable!();
+    }
+
+    pub fn move_log(&self) {
+        for mv in self.moves.iter() {
+            println!("{:<25} {:<15} {:<15}", mv.1, mv.2, mv.3);
+        }
     }
 }
 
@@ -354,8 +362,16 @@ impl Move for TreeTipMove {
         }
         
         let parent_id = params.tree.tree.nodes[node_id].parent;
-        params.tree.tree.nodes[node_id].height = new_height;
-        params.tree.tree.nodes[node_id].length = params.tree.tree.dist(parent_id, node_id);
+
+        let log_prior_likelihood_delta = if params.tree.tree.nodes[parent_id].height < new_height {
+            f64::NEG_INFINITY
+        }
+        else {
+            params.tree.tree.nodes[node_id].height = new_height;
+            params.tree.tree.nodes[node_id].length = params.tree.tree.dist(parent_id, node_id);
+            config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
+        };
+
 
         let revert = move |chain: &mut MCMC| {
             let node = &mut chain.params.tree.tree.nodes[node_id];
@@ -368,7 +384,7 @@ impl Move for TreeTipMove {
         damage.mark_matrix(node_id);
 
         MoveResult {
-            log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
+            log_prior_likelihood_delta,
             log_hastings_ratio: 0.0,
             damage,
             revert: Box::new(revert),
@@ -376,6 +392,174 @@ impl Move for TreeTipMove {
 
     }
 }
+
+//  Resize two coalescent grouped intervals
+
+pub struct CoalescentIntervalResize { }
+impl CoalescentIntervalResize {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for CoalescentIntervalResize {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        let num_intervals = if let cfg::TreePrior::Coalescent { num_intervals } = config.tree.prior {
+            num_intervals
+        } else { panic!("Tried CoalescentIntervalResize in non-Coalescent prior!") };
+
+        let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
+
+        let mut left = engine.rng.gen_range(0..num_intervals-1);
+        let sign = engine.rng.gen_bool(0.5);
+
+        let cur_sizes = match params.tree.prior {
+            params::TreePriorParams::Coalescent { ref mut sizes, ref pops } => {
+                let cur_sizes = sizes.clone();
+
+                if sign {
+                    if sizes[left] + 1 != sizes[left+1] {
+                        sizes[left] += 1;
+                    }
+                }
+                else {
+                    if left == 0 {
+                        if sizes[left] > 0 {
+                            sizes[left] -= 1;
+                        }
+                    }
+                    else {
+                        if sizes[left] - 1 > sizes[left - 1] {
+                            sizes[left] -= 1;
+                        }
+                    }
+                }
+
+                cur_sizes
+            },
+            _ => unreachable!(),
+        };
+
+        let revert = move |chain: &mut MCMC| {
+            match chain.params.tree.prior {
+                params::TreePriorParams::Coalescent { ref mut sizes, ref pops } => {
+                    *sizes = cur_sizes;
+                },
+                _ => unreachable!(),
+            }
+        };
+
+        let mut damage = Damage::blank(&params.tree.tree);
+
+        MoveResult {
+            log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
+            log_hastings_ratio: 0.0,
+            damage,
+            revert: Box::new(revert),
+        }
+    }
+}
+
+//  Resize two coalescent grouped intervals
+
+pub struct CoalescentPopulationRescale { }
+impl CoalescentPopulationRescale {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for CoalescentPopulationRescale {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        let num_intervals = if let cfg::TreePrior::Coalescent { num_intervals } = config.tree.prior {
+            num_intervals
+        } else { panic!("Tried CoalescentPopulationRescale in non-Coalescent prior!") };
+
+        let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
+
+        let proposal = PriorDist::Gamma { alpha: 100.0 , beta: 100.0 };
+        let mut factor: f64 = proposal.draw(engine);
+
+        let cur_pops = match params.tree.prior {
+            params::TreePriorParams::Coalescent { ref sizes, ref mut pops } => {
+                let cur_pops = pops.clone();
+                pops.iter_mut().for_each(|theta| *theta *= factor);
+                cur_pops
+            },
+            _ => unreachable!(),
+        };
+
+        let revert = move |chain: &mut MCMC| {
+            match chain.params.tree.prior {
+                params::TreePriorParams::Coalescent { ref sizes, ref mut pops } => {
+                    *pops = cur_pops;
+                },
+                _ => unreachable!(),
+            }
+        };
+
+        let mut damage = Damage::blank(&params.tree.tree);
+
+        MoveResult {
+            log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
+            log_hastings_ratio: proposal.log_density(1.0 / factor) - proposal.log_density(factor),
+            damage,
+            revert: Box::new(revert),
+        }
+    }
+}
+
+// Augment the population in one interval 
+
+pub struct CoalescentPopulationAugment { }
+impl CoalescentPopulationAugment {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for CoalescentPopulationAugment {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        let num_intervals = if let cfg::TreePrior::Coalescent { num_intervals } = config.tree.prior {
+            num_intervals
+        } else { panic!("Tried CoalescentPopulationRescale in non-Coalescent prior!") };
+
+        let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
+
+        let proposal = PriorDist::Gamma { alpha: 100.0 , beta: 100.0 };
+        let mut factor: f64 = proposal.draw(engine);
+        
+        let mut pop: usize = engine.rng.gen_range(0..num_intervals);
+
+        let cur_pop = match params.tree.prior {
+            params::TreePriorParams::Coalescent { ref sizes, ref mut pops } => {
+                let cur_pop = pops[pop];
+                pops[pop] *= factor;
+                cur_pop
+            },
+            _ => unreachable!(),
+        };
+
+        let revert = move |chain: &mut MCMC| {
+            match chain.params.tree.prior {
+                params::TreePriorParams::Coalescent { ref sizes, ref mut pops } => {
+                    pops[pop] = cur_pop;
+                },
+                _ => unreachable!(),
+            }
+        };
+
+        let mut damage = Damage::blank(&params.tree.tree);
+
+        MoveResult {
+            log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
+            log_hastings_ratio: proposal.log_density(1.0 / factor) - proposal.log_density(factor),
+            damage,
+            revert: Box::new(revert),
+        }
+    }
+}
+
 
 // ABRV swap two rate categories
 
@@ -441,10 +625,8 @@ impl Move for ASRVShapeMove {
             _ => unimplemented!(),
         };
 
-        let nudge = 1.0 / lambda;
-        let proposal = PriorDist::Uniform { low: cur_asrv_shape - nudge,
-                                            high: cur_asrv_shape + nudge };
-
+        let nudge = 0.1 / lambda;
+        let proposal = PriorDist::Normal { mean: cur_asrv_shape, sigma: nudge };
         let new_asrv_shape = proposal.draw(engine);
 
         let revert = move |chain: &mut MCMC| {
@@ -488,9 +670,8 @@ impl Move for ABRVShapeMove {
             _ => unimplemented!(),
         };
 
-        let nudge = 1.0 / lambda;
-        let proposal = PriorDist::Uniform { low: cur_abrv_shape - nudge,
-                                            high: cur_abrv_shape + nudge };
+        let nudge = 0.1 / lambda;
+        let proposal = PriorDist::Normal { mean: cur_abrv_shape, sigma: nudge };
         let new_abrv_shape = proposal.draw(engine);
 
         let n_edges = 2 * config.tree.data.num_tips() - 2;
@@ -582,7 +763,7 @@ impl Move for PiOneMove {
             _ => unimplemented!(),
         };
 
-        let window = (high - low) / 20.0;
+        let window = (high - low) / 50.0;
         let proposal = PriorDist::Uniform { low: cur_pi_one - window, high: cur_pi_one + window };
         let mut new_pi_one = proposal.draw(engine);
 

@@ -1,3 +1,5 @@
+#![feature(type_name_of_val)]
+
 extern crate beagle;
 use rand::Rng;
 use rand::rngs::ThreadRng;
@@ -10,7 +12,6 @@ pub mod proposal;
 pub mod cfg;
 pub mod params;
 pub mod tree;
-//pub mod newick;
 pub mod nexus;
 
 pub struct Damage {
@@ -162,7 +163,7 @@ impl<'c> MCMC<'c> {
     }
 
     pub fn step(&mut self) -> bool {
-        let result = self.propose.make_move(&self.config, &mut self.params, &mut self.engine);
+        let (result, move_id) = self.propose.make_move(&self.config, &mut self.params, &mut self.engine);
         if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
 
         let accepted = if result.log_prior_likelihood_delta != f64::NEG_INFINITY {
@@ -173,6 +174,8 @@ impl<'c> MCMC<'c> {
             };
 
             if likelihood > 0.0 { // something has gone very wrong...
+               // if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
+               // (result.revert)(self);
                 return false; 
             }
 
@@ -183,12 +186,16 @@ impl<'c> MCMC<'c> {
                 self.last_log_likelihood = likelihood;
                 true
             } else { false }
+
         } else { false };
 
         if !accepted { 
             //println!("\t...revert");
             if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
             (result.revert)(self);
+        }
+        else {
+            self.propose.moves[move_id].3 += 1;
         }
 
         true 

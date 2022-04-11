@@ -7,6 +7,14 @@ use crate::params;
 use crate::{Damage, Engine};
 
 #[derive(Clone, Debug)]
+pub struct Interval {
+    pub width: f64,
+    pub end: f64,
+    pub lineages: usize,
+    pub coalescent: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct TreeNode {
     pub id: usize,
     pub parent: usize,
@@ -74,6 +82,83 @@ impl Tree {
         else {
             Some(self.nodes[id].parent)
         }
+    }
+
+    pub fn intervals(&self) -> Vec<Interval> {
+        assert!(self.nodes.len() > 2);
+
+        let mut cur = Interval {width: 0.0, end: self.nodes[0].height, lineages: 2, coalescent: true}; 
+
+        let lc_height = self.nodes[self.nodes[0].lchild].height;
+        let rc_height = self.nodes[self.nodes[0].rchild].height;
+
+        let mut fringe = if lc_height > rc_height {
+            vec![(rc_height, self.nodes[0].rchild), (lc_height, self.nodes[0].lchild)]
+        }
+        else {
+            vec![(lc_height, self.nodes[0].lchild), (rc_height, self.nodes[0].rchild)]
+        };
+
+        let mut intervals = vec![];
+        while let Some(nxt) = fringe.pop() {
+            cur.width = cur.end - nxt.0;
+            let lineages = cur.lineages;
+            intervals.insert(0, cur);
+
+            if self.is_leaf(nxt.1) {
+                cur = Interval {width: 0.0, end: nxt.0, lineages: lineages - 1, coalescent: false};
+            }
+            else {
+                cur = Interval {width: 0.0, end: nxt.0, lineages: lineages + 1, coalescent: true};
+            }
+
+            // if we have reached t=0 then stop building intervals
+            if nxt.0 == 0.0 {
+                break
+            }
+
+            let mut fringe_add = |add_h_n: (f64, usize)| {
+                let mut added = false;
+                for (i, (h, n)) in fringe.iter().enumerate() {
+                    if *h > add_h_n.0 {
+                        fringe.insert(i, add_h_n);
+                        added = true; break; 
+                    }
+                }
+                if !added {
+                    fringe.push(add_h_n);
+                }
+            };
+
+            let lc = self.nodes[nxt.1].lchild;
+            let rc = self.nodes[nxt.1].rchild;
+            
+            if lc != 0 { 
+                fringe_add((self.nodes[lc].height, lc));
+            }
+            if rc != 0 { 
+                fringe_add((self.nodes[rc].height, rc));
+            }
+        }
+
+        intervals 
+    }
+
+    pub fn coalescents(&self) -> Vec<(Interval, usize, usize)> {
+        let mut non_coal_ctr = 0;
+
+        let mut coalescents = vec![];
+        let mut i = 0;
+        for int in self.intervals() {
+            non_coal_ctr += 1;
+            if int.coalescent {
+                coalescents.push((int, non_coal_ctr, i));
+                non_coal_ctr = 0
+            }
+            i += 1;
+        }
+
+        coalescents
     }
 
     pub fn level_order(&self) -> Vec<usize> {
