@@ -350,20 +350,18 @@ impl Move for TreeTipMove {
         let cur_height = params.tree.tree.nodes[node_id].height;
         let cur_length = params.tree.tree.nodes[node_id].length;
 
-        let window = (high - low) / 20.0;
-        let proposal = PriorDist::Uniform { low: cur_height - window, high: cur_height + window };
+        let proposal = PriorDist::Normal { mean: cur_height, sigma: (high - low) / 10.0 };
         let mut new_height = proposal.draw(engine);
 
-        if new_height > high {
-            new_height = low + (new_height - high);
-        }
-        else if new_height < low {
-            new_height = high + (new_height - low);
-        }
-        
         let parent_id = params.tree.tree.nodes[node_id].parent;
 
-        let log_prior_likelihood_delta = if params.tree.tree.nodes[parent_id].height < new_height {
+        let log_prior_likelihood_delta = if new_height > high {
+            f64::NEG_INFINITY
+        }
+        else if new_height < low {
+            f64::NEG_INFINITY
+        }
+        else if params.tree.tree.nodes[parent_id].height < new_height {
             f64::NEG_INFINITY
         }
         else {
@@ -477,7 +475,7 @@ impl Move for CoalescentPopulationRescale {
 
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
-        let proposal = PriorDist::Gamma { alpha: 100.0 , beta: 100.0 };
+        let proposal = PriorDist::Gamma { alpha: 10.0 , beta: 10.0 };
         let mut factor: f64 = proposal.draw(engine);
 
         let cur_pops = match params.tree.prior {
@@ -526,7 +524,7 @@ impl Move for CoalescentPopulationAugment {
 
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
-        let proposal = PriorDist::Gamma { alpha: 100.0 , beta: 100.0 };
+        let proposal = PriorDist::Gamma { alpha: 10.0 , beta: 10.0 };
         let mut factor: f64 = proposal.draw(engine);
         
         let mut pop: usize = engine.rng.gen_range(0..num_intervals);
@@ -625,7 +623,7 @@ impl Move for ASRVShapeMove {
             _ => unimplemented!(),
         };
 
-        let nudge = 0.1 / lambda;
+        let nudge = 10.0 / lambda;
         let proposal = PriorDist::Normal { mean: cur_asrv_shape, sigma: nudge };
         let new_asrv_shape = proposal.draw(engine);
 
@@ -717,12 +715,9 @@ impl Move for BaseRateMove {
             _ => unimplemented!(),
         };
 
-        let nudge = 1.0 / lambda;
-        let proposal = PriorDist::Uniform { low: cur_base_rate - nudge,
-                                            high: cur_base_rate + nudge };
-        let new_base_rate = proposal.draw(engine);
-
-        params.traits.base = new_base_rate;
+        let nudge = 0.1 / lambda;
+        let proposal = PriorDist::Normal { mean: cur_base_rate, sigma: nudge };
+        let mut new_base_rate = proposal.draw(engine);
 
         let revert = move |chain: &mut MCMC| {
             chain.params.traits.base = cur_base_rate;
@@ -763,16 +758,16 @@ impl Move for PiOneMove {
             _ => unimplemented!(),
         };
 
-        let window = (high - low) / 50.0;
-        let proposal = PriorDist::Uniform { low: cur_pi_one - window, high: cur_pi_one + window };
+        let proposal = PriorDist::Normal { mean: cur_pi_one, sigma: (high - low) / 100.0 };
         let mut new_pi_one = proposal.draw(engine);
 
-        if new_pi_one > high {
-            new_pi_one = low + (new_pi_one - high);
+        let log_prior_likelihood_delta = if new_pi_one > high {
+            f64::NEG_INFINITY
         }
         else if new_pi_one < low {
-            new_pi_one = high + (new_pi_one - low);
+            f64::NEG_INFINITY
         }
+        else { 0.0 };
 
         match params.traits.subst {
             params::SubstitutionModelParams::BinaryGTR { ref mut pi_one } => *pi_one = new_pi_one,
@@ -785,7 +780,7 @@ impl Move for PiOneMove {
         };
 
         MoveResult {
-            log_prior_likelihood_delta: 0.0, // we happen to know we have a uniform prior
+            log_prior_likelihood_delta,
             log_hastings_ratio: 0.0,
             damage: Damage::full(&params.tree.tree),
             revert: Box::new(revert),
