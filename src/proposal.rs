@@ -627,7 +627,7 @@ impl Move for ASRVShapeMove {
         // This parameter is sensitive for convergence
         let nudge = match config.tree.prior {
             cfg::TreePrior::Uniform { .. } => 0.1 / lambda,
-            cfg::TreePrior::Coalescent { .. } => 4.0 / lambda,
+            cfg::TreePrior::Coalescent { .. } => 1.0 / lambda,
         };
 
         let proposal = PriorDist::Normal { mean: cur_asrv_shape, sigma: nudge };
