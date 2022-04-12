@@ -1,5 +1,3 @@
-#![feature(type_name_of_val)]
-
 extern crate beagle;
 use rand::rngs::ThreadRng;
 
