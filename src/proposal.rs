@@ -352,7 +352,7 @@ impl Move for TreeTipMove {
 
         let window = (high - low) / 5.0;
         let proposal = PriorDist::Uniform { low: cur_height - window, high: cur_height + window };
-        let mut new_height = proposal.draw(engine);
+        let new_height = proposal.draw(engine);
 
         let parent_id = params.tree.tree.nodes[node_id].parent;
 
@@ -409,11 +409,11 @@ impl Move for CoalescentIntervalResize {
 
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
-        let mut left = engine.rng.gen_range(0..num_intervals-1);
+        let left = engine.rng.gen_range(0..num_intervals-1);
         let sign = engine.rng.gen_bool(0.5);
 
         let cur_sizes = match params.tree.prior {
-            params::TreePriorParams::Coalescent { ref mut sizes, ref pops } => {
+            params::TreePriorParams::Coalescent { ref mut sizes, .. } => {
                 let cur_sizes = sizes.clone();
 
                 if sign {
@@ -441,14 +441,14 @@ impl Move for CoalescentIntervalResize {
 
         let revert = move |chain: &mut MCMC| {
             match chain.params.tree.prior {
-                params::TreePriorParams::Coalescent { ref mut sizes, ref pops } => {
+                params::TreePriorParams::Coalescent { ref mut sizes, .. } => {
                     *sizes = cur_sizes;
                 },
                 _ => unreachable!(),
             }
         };
 
-        let mut damage = Damage::blank(&params.tree.tree);
+        let damage = Damage::blank(&params.tree.tree);
 
         MoveResult {
             log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
@@ -470,17 +470,13 @@ impl CoalescentPopulationRescale {
 
 impl Move for CoalescentPopulationRescale {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
-        let num_intervals = if let cfg::TreePrior::Coalescent { num_intervals } = config.tree.prior {
-            num_intervals
-        } else { panic!("Tried CoalescentPopulationRescale in non-Coalescent prior!") };
-
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
         let proposal = PriorDist::Gamma { alpha: 10.0, beta: 10.0 };
-        let mut factor: f64 = proposal.draw(engine);
+        let factor: f64 = proposal.draw(engine);
 
         let cur_pops = match params.tree.prior {
-            params::TreePriorParams::Coalescent { ref sizes, ref mut pops } => {
+            params::TreePriorParams::Coalescent { ref mut pops, .. } => {
                 let cur_pops = pops.clone();
                 pops.iter_mut().for_each(|theta| *theta *= factor);
                 cur_pops
@@ -490,14 +486,14 @@ impl Move for CoalescentPopulationRescale {
 
         let revert = move |chain: &mut MCMC| {
             match chain.params.tree.prior {
-                params::TreePriorParams::Coalescent { ref sizes, ref mut pops } => {
+                params::TreePriorParams::Coalescent { ref mut pops, .. } => {
                     *pops = cur_pops;
                 },
                 _ => unreachable!(),
             }
         };
 
-        let mut damage = Damage::blank(&params.tree.tree);
+        let damage = Damage::blank(&params.tree.tree);
 
         MoveResult {
             log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
@@ -526,12 +522,12 @@ impl Move for CoalescentPopulationAugment {
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
         let proposal = PriorDist::Gamma { alpha: 10.0, beta: 10.0 };
-        let mut factor: f64 = proposal.draw(engine);
+        let factor: f64 = proposal.draw(engine);
         
-        let mut pop: usize = engine.rng.gen_range(0..num_intervals);
+        let pop: usize = engine.rng.gen_range(0..num_intervals);
 
         let cur_pop = match params.tree.prior {
-            params::TreePriorParams::Coalescent { ref sizes, ref mut pops } => {
+            params::TreePriorParams::Coalescent { ref mut pops, .. } => {
                 let cur_pop = pops[pop];
                 pops[pop] *= factor;
                 cur_pop
@@ -541,14 +537,14 @@ impl Move for CoalescentPopulationAugment {
 
         let revert = move |chain: &mut MCMC| {
             match chain.params.tree.prior {
-                params::TreePriorParams::Coalescent { ref sizes, ref mut pops } => {
+                params::TreePriorParams::Coalescent { ref mut pops, .. } => {
                     pops[pop] = cur_pop;
                 },
                 _ => unreachable!(),
             }
         };
 
-        let mut damage = Damage::blank(&params.tree.tree);
+        let damage = Damage::blank(&params.tree.tree);
 
         MoveResult {
             log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
@@ -716,13 +712,8 @@ impl Move for BaseRateMove {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
         let cur_base_rate = params.traits.base;
 
-        let lambda = match config.traits.base {
-            PriorDist::Exponential { l }  => l,
-            _ => unimplemented!(),
-        };
-
         let proposal = PriorDist::Gamma { alpha: 100.0, beta: 100.0 }; 
-        let mut factor = proposal.draw(engine);
+        let factor = proposal.draw(engine);
         let new_base_rate = cur_base_rate * factor;
 
         params.traits.base = new_base_rate;
@@ -767,7 +758,7 @@ impl Move for PiOneMove {
         };
 
         let proposal = PriorDist::Normal { mean: cur_pi_one, sigma: (high - low) / 100.0 };
-        let mut new_pi_one = proposal.draw(engine);
+        let new_pi_one = proposal.draw(engine);
 
         let log_prior_likelihood_delta = if new_pi_one > high {
             f64::NEG_INFINITY

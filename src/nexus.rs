@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use crate::tree;
-
 #[derive(Debug)]
 pub struct DataBlock<'src> {
     pub n_taxa: usize,

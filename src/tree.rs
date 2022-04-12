@@ -2,7 +2,6 @@ use beagle;
 
 use std::collections::HashMap;
 
-use crate::cfg::Calibration;
 use crate::params;
 use crate::{Damage, Engine};
 
@@ -119,7 +118,7 @@ impl Tree {
 
             let mut fringe_add = |add_h_n: (f64, usize)| {
                 let mut added = false;
-                for (i, (h, n)) in fringe.iter().enumerate() {
+                for (i, (h, _)) in fringe.iter().enumerate() {
                     if *h > add_h_n.0 {
                         fringe.insert(i, add_h_n);
                         added = true; break; 

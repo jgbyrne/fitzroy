@@ -1,7 +1,6 @@
 #![feature(type_name_of_val)]
 
 extern crate beagle;
-use rand::Rng;
 use rand::rngs::ThreadRng;
 
 #[cfg(test)]
@@ -77,14 +76,13 @@ pub struct Engine {
 }
 
 impl Engine {
-    fn forge<'c>(config: &'c cfg::Configuration, partial_damage: bool) -> Self {
+    fn forge<'c>(_config: &'c cfg::Configuration, partial_damage: bool) -> Self {
         Engine { run: false, rng: rand::thread_rng(), partial_damage, inst: None }
     }
 
     fn start<'c>(&mut self, config: &'c cfg::Configuration, params: &params::Parameters) -> bool {
         if self.run { panic!("Tried to start running Engine") }
 
-        let model = params.traits.model();
         let n_sites = config.tree.data.traits;
         let n_tips = config.tree.data.num_tips() as i32;
         let n_nodes = (n_tips * 2) - 1; //TODO trial buffers

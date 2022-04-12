@@ -5,13 +5,10 @@ use crate::params;
 use crate::Engine;
 use crate::util::{PriorDist, log_normal_categories};
 
-use std::boxed::Box;
-
 use rand::Rng;
 use rand::seq::SliceRandom;
-use rand::distributions::Distribution;
 
-use statrs::distribution::{Exp, Continuous, Gamma, ContinuousCDF};
+use statrs::distribution::{Gamma, ContinuousCDF};
 
 #[derive(Debug)]
 pub enum TreePrior {
@@ -68,7 +65,7 @@ impl TreeModel {
                 root_node.height = root;
                 root_node.length = 1.0;
             },
-            params::TreePriorParams::Coalescent { ref sizes, ref pops } => {
+            params::TreePriorParams::Coalescent { .. } => {
                 root_node.height = self.calibrations.iter().map(|(_, c)| c.high).fold(0.0, |a: f64, b: f64| a.max(b)) * 1.1;
                 root_node.length = 1.0;
             },
@@ -142,18 +139,17 @@ impl TreeModel {
         }
 
         let tree = tree::Tree { nodes };
-        let intervals = tree.intervals();
 
         // update coalescent prior with default interval sizes
         match prior {
-            params::TreePriorParams::Coalescent { ref mut sizes, ref pops } => {
+            params::TreePriorParams::Coalescent { ref mut sizes, .. } => {
                 if let TreePrior::Coalescent { num_intervals } = self.prior {
 
                     let coalescents = tree.coalescents();
                     let some_coals = coalescents.len() / num_intervals;
                     *sizes = vec![];
 
-                    for i in (0..num_intervals - 1) {
+                    for i in 0 .. num_intervals - 1 {
                         let ceil = some_coals * (i + 1);
                         sizes.push(ceil - 1);
                     }
@@ -173,7 +169,7 @@ impl TreeModel {
 
     pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
         match self.prior {
-            TreePrior::Uniform { ref root } => {
+            TreePrior::Uniform { .. } => {
                 let mut high = 0;
                 let mut high_val = 0.0;
                 let mut low = 0;
@@ -331,7 +327,7 @@ impl ASRV {
         params::ASRVParams { shape, rates }
     }
 
-    pub fn draw(&self, engine: &mut Engine, sites: i32) -> params::ASRVParams {
+    pub fn draw(&self, engine: &mut Engine, _sites: i32) -> params::ASRVParams {
         if !self.enabled {
             let rates = (0..self.ncats).map(|_| 1.0).collect::<Vec<f64>>();
             return params::ASRVParams { shape: 0.0, rates: rates }
