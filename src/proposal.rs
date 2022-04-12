@@ -350,7 +350,7 @@ impl Move for TreeTipMove {
         let cur_height = params.tree.tree.nodes[node_id].height;
         let cur_length = params.tree.tree.nodes[node_id].length;
 
-        let window = (high - low) / 20.0;
+        let window = (high - low) / 5.0;
         let proposal = PriorDist::Uniform { low: cur_height - window, high: cur_height + window };
         let mut new_height = proposal.draw(engine);
 
@@ -477,7 +477,7 @@ impl Move for CoalescentPopulationRescale {
 
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
-        let proposal = PriorDist::Gamma { alpha: 100.0 , beta: 100.0 };
+        let proposal = PriorDist::Gamma { alpha: 10.0, beta: 10.0 };
         let mut factor: f64 = proposal.draw(engine);
 
         let cur_pops = match params.tree.prior {
@@ -526,7 +526,7 @@ impl Move for CoalescentPopulationAugment {
 
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
-        let proposal = PriorDist::Gamma { alpha: 100.0 , beta: 100.0 };
+        let proposal = PriorDist::Gamma { alpha: 10.0, beta: 10.0 };
         let mut factor: f64 = proposal.draw(engine);
         
         let mut pop: usize = engine.rng.gen_range(0..num_intervals);
@@ -625,7 +625,7 @@ impl Move for ASRVShapeMove {
             _ => unimplemented!(),
         };
 
-        let nudge = 0.1 / lambda;
+        let nudge = 2.5 / lambda;
         let proposal = PriorDist::Normal { mean: cur_asrv_shape, sigma: nudge };
         let new_asrv_shape = proposal.draw(engine);
 
@@ -670,7 +670,7 @@ impl Move for ABRVShapeMove {
             _ => unimplemented!(),
         };
 
-        let nudge = 0.1 / lambda;
+        let nudge = 0.01 / lambda;
         let proposal = PriorDist::Normal { mean: cur_abrv_shape, sigma: nudge };
         let new_abrv_shape = proposal.draw(engine);
 
@@ -717,10 +717,9 @@ impl Move for BaseRateMove {
             _ => unimplemented!(),
         };
 
-        let nudge = 1.0 / lambda;
-        let proposal = PriorDist::Uniform { low: cur_base_rate - nudge,
-                                            high: cur_base_rate + nudge };
-        let new_base_rate = proposal.draw(engine);
+        let proposal = PriorDist::Gamma { alpha: 100.0, beta: 100.0 }; 
+        let mut factor = proposal.draw(engine);
+        let new_base_rate = cur_base_rate * factor;
 
         params.traits.base = new_base_rate;
 
@@ -736,7 +735,7 @@ impl Move for BaseRateMove {
 
         MoveResult {
             log_prior_likelihood_delta,
-            log_hastings_ratio: 0.0,
+            log_hastings_ratio: proposal.log_density(1.0 / factor) - proposal.log_density(factor),
             damage: Damage::full(&params.tree.tree),
             revert: Box::new(revert),
         }
