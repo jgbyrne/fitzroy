@@ -169,7 +169,7 @@ impl TreeModel {
 
     pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
         match self.prior {
-            TreePrior::Uniform { .. } => {
+            TreePrior::Uniform { ref root } => {
                 let mut high = 0;
                 let mut high_val = 0.0;
                 let mut low = 0;
@@ -193,10 +193,11 @@ impl TreeModel {
                         product += (1.0/params.tree.tree.dist(0, tip)).ln();
                     }
                 }
-
+                
+                let root_prior = root;
                 if let params::TreePriorParams::Uniform { ref mut root } = params.tree.prior {
                     *root = params.tree.tree.nodes[0].height; 
-                    product -= root.ln();
+                    product += root_prior.log_density(*root);
                 } else { unreachable!() }
 
                 product

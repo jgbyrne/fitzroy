@@ -20,7 +20,9 @@ impl PriorDist {
     pub fn draw(&self, engine: &mut Engine) -> f64 {
         match self {
             PriorDist::Reciprocal => {
-                unimplemented!();
+                // chosen by fair dice roll
+                // guaranteed to be random
+                0.0001
             },
             PriorDist::Uniform { low, high } => {
                 let r: f64 = engine.rng.gen();
@@ -48,7 +50,7 @@ impl PriorDist {
     pub fn log_density(&self, x: f64) -> f64 {
         match self {
             PriorDist::Reciprocal => {
-                unimplemented!();
+                - x.ln()
             },
             PriorDist::Uniform { low, high } => {
                 (1.0 / (high - low)).ln()
