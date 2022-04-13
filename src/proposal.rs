@@ -521,7 +521,7 @@ impl Move for CoalescentPopulationAugment {
 
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
-        let proposal = PriorDist::Gamma { alpha: 10.0, beta: 10.0 };
+        let proposal = PriorDist::Gamma { alpha: 10.0, beta: 10.0 }; 
         let factor: f64 = proposal.draw(engine);
         
         let pop: usize = engine.rng.gen_range(0..num_intervals);

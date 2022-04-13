@@ -220,10 +220,10 @@ impl TreeModel {
                             switch = false;
                         }
 
-                        let k_i = interval.lineages;
+                        let k_i = interval.lineages as f64;
                         let pop = pops[gi_ptr];
 
-                        let k_i_choose_2 = ((k_i * (k_i - 1)) as f64) / 2.0;
+                        let k_i_choose_2 = ((k_i * (k_i - 1.0))) / 2.0;
 
                         let k_i_choose_2_div_pop = k_i_choose_2 / pop;
 
@@ -246,7 +246,7 @@ impl TreeModel {
                     product -= pops[0].ln();
                     for j in 1..num_intervals {
                         product += pops[j-1].ln();
-                        product -= pops[j] / pops[j-1]
+                        product -= pops[j] / pops[j-1];
                     }
 
                     product

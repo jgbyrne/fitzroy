@@ -3,7 +3,7 @@ use crate::Engine;
 use rand::Rng;
 use rand::distributions::Distribution;
 
-use statrs::distribution::{Exp, Continuous, Gamma, Normal};
+use statrs::distribution::{Exp, Continuous, Gamma, Normal, LogNormal};
 use statrs::function::erf;
 
 #[derive(Debug)]
@@ -13,6 +13,7 @@ pub enum PriorDist {
     Exponential { l: f64 },
     Gamma { alpha: f64, beta: f64 },
     Normal { mean: f64, sigma: f64 },
+    LogNormal { location: f64, scale: f64 },
 }
 
 impl PriorDist {
@@ -35,6 +36,10 @@ impl PriorDist {
             },
             PriorDist::Normal { mean, sigma } => {
                 let dist = Normal::new(*mean, *sigma).unwrap();
+                dist.sample(&mut engine.rng)
+            },
+            PriorDist::LogNormal { location, scale } => {
+                let dist = LogNormal::new(*location, *scale).unwrap();
                 dist.sample(&mut engine.rng)
             },
         }
@@ -60,6 +65,10 @@ impl PriorDist {
                 let dist = Normal::new(*mean, *sigma).unwrap();
                 dist.ln_pdf(x)
             },
+            PriorDist::LogNormal { location, scale } => {
+                let dist = LogNormal::new(*location, *scale).unwrap();
+                dist.ln_pdf(x)
+            }
         }
     }
 }

@@ -144,9 +144,8 @@ impl Tree {
     }
 
     pub fn coalescents(&self) -> Vec<(Interval, usize, usize)> {
-        let mut non_coal_ctr = 0;
-
         let mut coalescents = vec![];
+        let mut non_coal_ctr = 0;
         let mut i = 0;
         for int in self.intervals() {
             non_coal_ctr += 1;
