@@ -245,7 +245,7 @@ impl TreeModel {
 
                     product -= pops[0].ln();
                     for j in 1..num_intervals {
-                        product += pops[j-1].ln();
+                        product -= pops[j-1].ln();
                         product -= pops[j] / pops[j-1];
                     }
 
