@@ -622,8 +622,8 @@ impl Move for ASRVShapeMove {
 
         // This parameter is sensitive for convergence
         let nudge = match config.tree.prior {
-            cfg::TreePrior::Uniform { .. } => 0.1 / lambda,
-            cfg::TreePrior::Coalescent { .. } => 0.5 / lambda,
+            cfg::TreePrior::Uniform { .. } => 0.075 / lambda,
+            cfg::TreePrior::Coalescent { .. } => 0.3 / lambda,
         };
 
         let proposal = PriorDist::Normal { mean: cur_asrv_shape, sigma: nudge };
@@ -712,7 +712,7 @@ impl Move for BaseRateMove {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
         let cur_base_rate = params.traits.base;
 
-        let proposal = PriorDist::Gamma { alpha: 100.0, beta: 100.0 }; 
+        let proposal = PriorDist::Normal { mean: 1.0, sigma: 0.08 }; 
         let factor = proposal.draw(engine);
         let new_base_rate = cur_base_rate * factor;
 
@@ -757,7 +757,7 @@ impl Move for PiOneMove {
             _ => unimplemented!(),
         };
 
-        let proposal = PriorDist::Normal { mean: cur_pi_one, sigma: (high - low) / 100.0 };
+        let proposal = PriorDist::Normal { mean: cur_pi_one, sigma: (high - low) / 150.0 };
         let new_pi_one = proposal.draw(engine);
 
         let log_prior_likelihood_delta = if new_pi_one > high {
