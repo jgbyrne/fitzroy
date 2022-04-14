@@ -146,15 +146,20 @@ impl TreeModel {
                 if let TreePrior::Coalescent { num_intervals } = self.prior {
 
                     let coalescents = tree.coalescents();
-                    let some_coals = coalescents.len() / num_intervals;
-                    *sizes = vec![];
 
-                    for i in 0 .. num_intervals - 1 {
-                        let ceil = some_coals * (i + 1);
-                        sizes.push(ceil - 1);
+                    if num_intervals == 1 {
+                        *sizes = vec![coalescents.len() - 1];
+                    } else {
+                        let some_coals = coalescents.len() / num_intervals;
+                        *sizes = vec![];
+
+                        for i in 0 .. num_intervals - 1 {
+                            let ceil = some_coals * (i + 1);
+                            sizes.push(ceil - 1);
+                        }
+
+                        sizes.push(coalescents.len() - 1);
                     }
-
-                    sizes.push(coalescents.len() - 1);
                 } else { unreachable!() }
             },
             _ => {}, 
@@ -245,9 +250,11 @@ impl TreeModel {
                     // population prior
 
                     product -= pops[0].ln();
-                    for j in 1..num_intervals {
-                        product -= pops[j-1].ln();
-                        product -= pops[j] / pops[j-1];
+                    if num_intervals > 1 {
+                        for j in 1..num_intervals {
+                            product -= pops[j-1].ln();
+                            product -= pops[j] / pops[j-1];
+                        }
                     }
 
                     product
@@ -438,10 +445,12 @@ impl Configuration {
         propose.add_move("Tree LOCAL", proposal::TreeLocalMove::new(), 3);
 
         match self.tree.prior {
-             TreePrior::Coalescent { .. } => {
-                 propose.add_move("Coal Interval Resize", proposal::CoalescentIntervalResize::new(), 1);
+             TreePrior::Coalescent { ref num_intervals } => {
                  propose.add_move("Coal Population Rescale", proposal::CoalescentPopulationRescale::new(), 1);
-                 propose.add_move("Coal Population Augment", proposal::CoalescentPopulationAugment::new(), 1);
+                 if *num_intervals > 1 {
+                     propose.add_move("Coal Population Augment", proposal::CoalescentPopulationAugment::new(), 1);
+                     propose.add_move("Coal Interval Resize", proposal::CoalescentIntervalResize::new(), 1);
+                 }
              },
              TreePrior::Uniform { .. } => {},
         }

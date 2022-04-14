@@ -405,7 +405,11 @@ impl Move for CoalescentIntervalResize {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
         let num_intervals = if let cfg::TreePrior::Coalescent { num_intervals } = config.tree.prior {
             num_intervals
-        } else { panic!("Tried CoalescentIntervalResize in non-Coalescent prior!") };
+        } else { panic!("Tried CoalescentIntervalResize in non-Coalescent prior!"); };
+
+        if num_intervals <= 1 {
+           panic!("Tried CoalescentIntervalResize with num_intervals = 1!");
+        }
 
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
@@ -472,7 +476,7 @@ impl Move for CoalescentPopulationRescale {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
-        let proposal = PriorDist::Gamma { alpha: 10.0, beta: 10.0 };
+        let proposal = PriorDist::Normal { mean: 1.0, sigma: 0.1 }; 
         let factor: f64 = proposal.draw(engine);
 
         let cur_pops = match params.tree.prior {
@@ -483,6 +487,10 @@ impl Move for CoalescentPopulationRescale {
             },
             _ => unreachable!(),
         };
+
+        let log_prior_likelihood_delta = if factor > 0.0 {
+            config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
+        } else { f64::NEG_INFINITY };
 
         let revert = move |chain: &mut MCMC| {
             match chain.params.tree.prior {
@@ -496,7 +504,7 @@ impl Move for CoalescentPopulationRescale {
         let damage = Damage::blank(&params.tree.tree);
 
         MoveResult {
-            log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
+            log_prior_likelihood_delta,
             log_hastings_ratio: proposal.log_density(1.0 / factor) - proposal.log_density(factor),
             damage,
             revert: Box::new(revert),
@@ -521,7 +529,7 @@ impl Move for CoalescentPopulationAugment {
 
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
-        let proposal = PriorDist::Gamma { alpha: 10.0, beta: 10.0 }; 
+        let proposal = PriorDist::Normal { mean: 1.0, sigma: 0.1 }; 
         let factor: f64 = proposal.draw(engine);
         
         let pop: usize = engine.rng.gen_range(0..num_intervals);
@@ -535,6 +543,10 @@ impl Move for CoalescentPopulationAugment {
             _ => unreachable!(),
         };
 
+        let log_prior_likelihood_delta = if factor > 0.0 {
+            config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
+        } else { f64::NEG_INFINITY };
+
         let revert = move |chain: &mut MCMC| {
             match chain.params.tree.prior {
                 params::TreePriorParams::Coalescent { ref mut pops, .. } => {
@@ -547,7 +559,7 @@ impl Move for CoalescentPopulationAugment {
         let damage = Damage::blank(&params.tree.tree);
 
         MoveResult {
-            log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
+            log_prior_likelihood_delta,
             log_hastings_ratio: proposal.log_density(1.0 / factor) - proposal.log_density(factor),
             damage,
             revert: Box::new(revert),
@@ -620,21 +632,17 @@ impl Move for ASRVShapeMove {
             _ => unimplemented!(),
         };
 
-        // This parameter is sensitive for convergence
-        let nudge = match config.tree.prior {
-            cfg::TreePrior::Uniform { .. } => 0.075 / lambda,
-            cfg::TreePrior::Coalescent { .. } => 0.3 / lambda,
-        };
+        let nudge = 0.08 / lambda;
 
         let proposal = PriorDist::Normal { mean: cur_asrv_shape, sigma: nudge };
         let new_asrv_shape = proposal.draw(engine);
+        params.traits.asrv = config.traits.asrv.params_for_shape(new_asrv_shape);
 
         let revert = move |chain: &mut MCMC| {
             chain.params.traits.asrv.shape = cur_asrv_shape;
         };
 
         let log_prior_likelihood_delta = if new_asrv_shape > 0.0 {
-            params.traits.asrv = config.traits.asrv.params_for_shape(new_asrv_shape);
             let old = config.traits.asrv.shape.log_density(cur_asrv_shape);
             let new = config.traits.asrv.shape.log_density(new_asrv_shape);
             new - old
@@ -712,7 +720,7 @@ impl Move for BaseRateMove {
     fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
         let cur_base_rate = params.traits.base;
 
-        let proposal = PriorDist::Normal { mean: 1.0, sigma: 0.08 }; 
+        let proposal = PriorDist::Normal { mean: 1.0, sigma: 0.03 }; 
         let factor = proposal.draw(engine);
         let new_base_rate = cur_base_rate * factor;
 
