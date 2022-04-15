@@ -1,4 +1,5 @@
 extern crate beagle;
+use rand::Rng;
 use rand::rngs::ThreadRng;
 
 #[cfg(test)]

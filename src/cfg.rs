@@ -304,7 +304,8 @@ impl ASRV {
         let alpha = shape;
         let beta = 1.0 / alpha;
 
-        let gamma = Gamma::new(alpha, beta).unwrap();
+        let gamma = Gamma::new(alpha, beta)
+            .unwrap_or_else(|_| panic!("Could not build Gamma({}, {})", alpha, beta));
 
         let mut cuts = Vec::with_capacity(self.ncats);
         cuts.push(0.0);
@@ -317,7 +318,8 @@ impl ASRV {
             cuts.push(gamma.inverse_cdf(frac));
         }
 
-        let gamma_plus = Gamma::new(alpha + 1.0, beta).unwrap();
+        let gamma_plus = Gamma::new(alpha + 1.0, beta)
+            .unwrap_or_else(|_| panic!("Could not build Gamma({}, {})", alpha, beta));
         let mut plus_cdf_points = Vec::with_capacity(self.ncats + 1);
         plus_cdf_points.push(0.0);
         for i in 1..self.ncats {
@@ -443,6 +445,7 @@ impl Configuration {
         propose.add_move("Pi One", proposal::PiOneMove::new(), 1);
         propose.add_move("Base Rate", proposal::BaseRateMove::new(), 1);
         propose.add_move("Tree LOCAL", proposal::TreeLocalMove::new(), 3);
+        propose.add_move("Tree Node Swap", proposal::TreeNodeSwap::new(), 1);
 
         match self.tree.prior {
              TreePrior::Coalescent { ref num_intervals } => {

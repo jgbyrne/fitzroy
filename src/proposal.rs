@@ -1,6 +1,7 @@
 use crate::{MCMC, Engine, Damage};
 use crate::params;
 use crate::cfg;
+use crate::tree;
 use crate::util::{PriorDist, log_normal_categories};
 
 use std::boxed::Box;
@@ -389,6 +390,101 @@ impl Move for TreeTipMove {
             revert: Box::new(revert),
         }
 
+    }
+}
+
+// Tree Node Swap 
+
+pub struct TreeNodeSwap { }
+impl TreeNodeSwap {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { })
+    }
+}
+
+impl Move for TreeNodeSwap {
+    fn make_move<'c>(&self, config: &cfg::Configuration, params: &mut params::Parameters, engine: &mut Engine) -> MoveResult<'c> {
+        let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
+        let tree = &mut params.tree.tree;
+        assert!(tree.nodes.len() > 3);
+       
+        let node_max = 2 * config.tree.data.num_tips() - 1;
+        let num_tips = config.tree.data.num_tips();
+        let n1 = engine.rng.gen_range(1..node_max);
+        let mut n2 = n1;
+        while n2 == n1 {
+            n2 = engine.rng.gen_range(1..node_max);
+        }
+
+        let n1_height = tree.nodes[n1].height;
+        let n2_height = tree.nodes[n2].height;
+
+        // If these two nodes can't be swapped, we short-circuit without modifying params
+        // This is to ensure we don't put the tree in an invalid state
+        if tree.nodes[tree.nodes[n1].parent].height <= n2_height ||
+           tree.nodes[tree.nodes[n2].parent].height <= n1_height {
+            let revert = move |chain: &mut MCMC| { };
+            return MoveResult {
+                log_prior_likelihood_delta: f64::NEG_INFINITY,
+                log_hastings_ratio: 0.0,
+                damage: Damage::blank(&tree),
+                revert: Box::new(revert),
+            };
+        }
+
+        fn swap(tree: &mut tree::Tree, n1: usize, n2: usize) -> (f64, f64) {
+            let n1_parent = tree.nodes[n1].parent;
+            let n2_parent = tree.nodes[n2].parent;
+
+            let n1_n2_are_left = (n1 == tree.nodes[n1_parent].lchild,
+                                  n2 == tree.nodes[n2_parent].lchild);
+
+            match n1_n2_are_left {
+                (true, true)   => { tree.nodes[n1_parent].lchild = tree.nodes[n2].id;
+                                    tree.nodes[n2_parent].lchild = tree.nodes[n1].id; },
+
+                (true, false)  => { tree.nodes[n1_parent].lchild = tree.nodes[n2].id;
+                                    tree.nodes[n2_parent].rchild = tree.nodes[n1].id; },
+
+                (false, true)  => { tree.nodes[n1_parent].rchild = tree.nodes[n2].id;
+                                    tree.nodes[n2_parent].lchild = tree.nodes[n1].id; },
+
+                (false, false) => { tree.nodes[n1_parent].rchild = tree.nodes[n2].id;
+                                    tree.nodes[n2_parent].rchild = tree.nodes[n1].id; },
+            }
+
+            (tree.nodes[n1].parent, tree.nodes[n2].parent) = (n2_parent, n1_parent);
+
+            tree.nodes[n1].length = tree.dist(tree.nodes[n1].parent, tree.nodes[n1].id);
+            tree.nodes[n2].length = tree.dist(tree.nodes[n2].parent, tree.nodes[n2].id);
+
+            (tree.nodes[n1].length, tree.nodes[n2].length)
+        }
+
+        let lengths = swap(tree, n1, n2);
+
+        let revert = move |chain: &mut MCMC| {
+            swap(&mut chain.params.tree.tree, n1, n2);
+        };
+
+        let log_prior_likelihood_delta = if lengths.0 <= 0.0 || lengths.1 <= 0.0 {
+            panic!("Tree Node Swap: Mutated tree into invalid state");
+        } else {
+            config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
+        };
+
+        let mut damage = Damage::blank(&params.tree.tree);
+        damage.mark_partials_to_root(&params.tree.tree, n1);
+        damage.mark_matrix(n1);
+        damage.mark_partials_to_root(&params.tree.tree, n2);
+        damage.mark_matrix(n2);
+
+        MoveResult {
+            log_prior_likelihood_delta,
+            log_hastings_ratio: 0.0,
+            damage,
+            revert: Box::new(revert),
+        }
     }
 }
 
