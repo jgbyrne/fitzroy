@@ -55,6 +55,15 @@ impl Constraint {
             clade
         }
     }
+    pub fn ancestry_constraint(ntaxa: usize, ancestor: usize, tips: Vec<usize>) -> Self {
+        let clade = tree::Clade::with(ntaxa, &tips);
+        Constraint {
+            tips,
+            ancestor: Some(ancestor),
+            clade
+        }
+    }
+
 }
 
 #[derive(Debug)]
@@ -272,15 +281,16 @@ impl TreeModel {
 
             // constraint is a proper subset of cur (until it isn't) 
             let mut cur = 0;
-            let satisfied = loop {
+            let s_o = loop {
                 //println!("cur {}", cur);
                 let left = tree.nodes[cur].lchild;
+                let right = tree.nodes[cur].rchild;
                 assert!(left != 0);
 
                 match tree.clades[left].relation(&constraint.clade) {
                     // constraint satisfied 
                     tree::Relation::Equivalent => {
-                        break true;
+                        break (true, right);
                     },
                     // constraint is a proper subset of left subtree
                     tree::Relation::Subset => {
@@ -288,13 +298,12 @@ impl TreeModel {
                     },
                     // constraint is a subset of right subtree
                     tree::Relation::Disjoint => {
-                        let right = tree.nodes[cur].rchild;
                         assert!(right != 0);
 
                         match tree.clades[right].relation(&constraint.clade) {
                             // constraint satisfied
                             tree::Relation::Equivalent => {
-                                break true;
+                                break (true, left);
                             },
                             // constraint is a proper subset of right subtree
                             tree::Relation::Subset => {
@@ -305,12 +314,27 @@ impl TreeModel {
                     },
                     // constraint unsatisfied 
                     tree::Relation::Intersecting | tree::Relation::Superset => {
-                        break false;
+                        break (false, 0);
                     },
                 }
             };
+
+            let satisfied = s_o.0;
+            let outgroup = s_o.1;
+
             if !satisfied {
                 product -= 10000.0;
+            }
+            else if let Some(a_id) = constraint.ancestor {
+                if outgroup != a_id {
+                    product -= 5000.0
+                }
+                else {
+                    let branch_length = tree.dist(cur, outgroup);
+                    let mut penalty = PriorDist::HalfNormal { sigma: 1.0 }.log_density(branch_length);
+                    if penalty < -3000.0 { penalty = -3000.0 }
+                    product -= penalty
+                }
             }
         }
 

@@ -79,7 +79,7 @@ impl PriorDist {
             },
             PriorDist::HalfNormal { sigma } => {
                 let dist = Normal::new(0.0, *sigma).unwrap();
-                dist.ln_pdf(x) + (2.0 as f64).ln()
+                dist.ln_pdf(x).abs() + (2.0 as f64).ln()
             },
         }
     }
