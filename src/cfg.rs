@@ -321,18 +321,18 @@ impl TreeModel {
 
             let satisfied = s_o.0;
             let outgroup = s_o.1;
-
+            
             if !satisfied {
-                product -= 10000.0;
+                product -= 100_000.0;
             }
             else if let Some(a_id) = constraint.ancestor {
                 if outgroup != a_id {
-                    product -= 5000.0
+                    product -= 50_000.0
                 }
                 else {
                     let branch_length = tree.dist(cur, outgroup);
                     let mut penalty = PriorDist::HalfNormal { sigma: 1.0 }.log_density(branch_length);
-                    if penalty < -3000.0 { penalty = -3000.0 }
+                    if penalty < -30_000.0 { penalty = -30_000.0 }
                     product -= penalty
                 }
             }

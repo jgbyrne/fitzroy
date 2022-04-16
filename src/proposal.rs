@@ -457,7 +457,8 @@ impl Move for TreeNodeSwap {
                                     tree.nodes[n2_parent].rchild = tree.nodes[n1].id; },
             }
 
-            (tree.nodes[n1].parent, tree.nodes[n2].parent) = (n2_parent, n1_parent);
+            tree.nodes[n1].parent = n2_parent;
+            tree.nodes[n2].parent = n1_parent;
 
             tree.nodes[n1].length = tree.dist(tree.nodes[n1].parent, tree.nodes[n1].id);
             tree.nodes[n2].length = tree.dist(tree.nodes[n2].parent, tree.nodes[n2].id);
