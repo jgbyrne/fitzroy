@@ -43,6 +43,18 @@ pub struct Calibration {
 pub struct Constraint {
     pub tips: Vec<usize>,
     pub ancestor: Option<usize>,
+    clade: tree::Clade,
+}
+
+impl Constraint {
+    pub fn clade_constraint(ntaxa: usize, tips: Vec<usize>) -> Self {
+        let clade = tree::Clade::with(ntaxa, &tips);
+        Constraint {
+            tips,
+            ancestor: None,
+            clade
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -134,7 +146,7 @@ impl TreeModel {
             nodes.push(parent);
         }
 
-        let tree = tree::Tree { nodes };
+        let tree = tree::Tree::new(nodes, self.data.tips.len());
 
         // update coalescent prior with default interval sizes
         match prior {
@@ -169,6 +181,7 @@ impl TreeModel {
     }
 
     pub fn log_prior_likelihood(&self, params: &params::Parameters) -> f64 {
+        let mut product = 0.0;
         match self.prior {
             TreePrior::Uniform { ref root } => {
                 let mut high = 0;
@@ -187,7 +200,6 @@ impl TreeModel {
                     }
                 }
                 assert!(high != low);
-                let mut product = 0.0;
                 // we are going to skip the highest and lowest tip
                 for tip in 1..=self.data.num_tips() {
                     if (tip != high) && (tip != low) {
@@ -197,16 +209,12 @@ impl TreeModel {
                 
                 let root_height = params.tree.tree.nodes[0].height; 
                 product += root.log_density(root_height);
-
-                product
             },
             TreePrior::Coalescent { num_intervals } => {
                 if let params::TreePriorParams::Coalescent { ref sizes, ref pops } = params.tree.prior {
                     let intervals = params.tree.tree.intervals();
                     let coalescents = params.tree.tree.coalescents();
 
-                    let mut product = 0.0;
-                    
                     let mut gi_ptr = 0;
                     let mut gi_final = coalescents[sizes[gi_ptr]].2;
 
@@ -249,15 +257,64 @@ impl TreeModel {
                             product -= pops[j] / pops[j-1];
                         }
                     }
-
-                    product
-
                 } else { unreachable!() }
             },
         }
 
-        for constraint in config.constraints {
+        let tree = &params.tree.tree;
+
+        for constraint in self.constraints.iter() {
+            //println!("=-=-=-=");
+            assert!(constraint.clade.ntaxa == tree.clades[0].ntaxa);
+            if matches!(tree.clades[0].relation(&constraint.clade), tree::Relation::Equivalent) {
+                continue;
+            }
+
+            // constraint is a proper subset of cur (until it isn't) 
+            let mut cur = 0;
+            let satisfied = loop {
+                //println!("cur {}", cur);
+                let left = tree.nodes[cur].lchild;
+                assert!(left != 0);
+
+                match tree.clades[left].relation(&constraint.clade) {
+                    // constraint satisfied 
+                    tree::Relation::Equivalent => {
+                        break true;
+                    },
+                    // constraint is a proper subset of left subtree
+                    tree::Relation::Subset => {
+                        cur = left;
+                    },
+                    // constraint is a subset of right subtree
+                    tree::Relation::Disjoint => {
+                        let right = tree.nodes[cur].rchild;
+                        assert!(right != 0);
+
+                        match tree.clades[right].relation(&constraint.clade) {
+                            // constraint satisfied
+                            tree::Relation::Equivalent => {
+                                break true;
+                            },
+                            // constraint is a proper subset of right subtree
+                            tree::Relation::Subset => {
+                                cur = right;
+                            },
+                            _ => { unreachable!(); }
+                        }
+                    },
+                    // constraint unsatisfied 
+                    tree::Relation::Intersecting | tree::Relation::Superset => {
+                        break false;
+                    },
+                }
+            };
+            if !satisfied {
+                product -= 10000.0;
+            }
         }
+
+        product
     }
 
 }

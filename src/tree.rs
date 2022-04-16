@@ -13,6 +13,156 @@ pub struct Interval {
     pub coalescent: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Relation {
+    Equivalent,
+    Subset,
+    Superset,
+    Disjoint,
+    Intersecting,
+}
+
+static CHUNK_LEN: usize = 8 * std::mem::size_of::<usize>();
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Clade {
+    pub ntaxa: usize,
+    flags: Vec<usize>,
+}
+
+impl Clade {
+    pub fn null() -> Self {
+        Clade { ntaxa: 0, flags: vec![] }
+    }
+
+    pub fn blank(ntaxa: usize) -> Self {
+        let chunks = ntaxa / CHUNK_LEN + if (ntaxa % CHUNK_LEN == 0) {0} else {1};
+        Clade { ntaxa, flags: (0..chunks).map(|_| 0).collect::<Vec<usize>>() }
+    }
+
+    pub fn with(ntaxa: usize, taxon_ids: &Vec<usize>) -> Self {
+        let mut new = Self::blank(ntaxa);
+        for id in taxon_ids {
+            new.add(*id);
+        }
+        new
+    }
+
+    pub fn add(&mut self, id: usize) {
+        let chunk = id / CHUNK_LEN;
+        let idx = id % CHUNK_LEN;
+        self.flags[chunk] |= 1 << idx;
+    }
+
+    pub fn relation(&self, other: &Self) -> Relation {
+        assert!(self.ntaxa == other.ntaxa);
+
+        let mut may_equiv = true;
+        let mut may_super = true;
+        let mut may_sub   = true;
+        let mut may_disj  = true;
+
+        for i in 0..self.flags.len() {
+            if self.flags[i] != other.flags[i] {
+                may_equiv = false;
+            }
+
+            let and = self.flags[i] & other.flags[i];
+            if and != 0 {
+                may_disj = false;
+            }
+
+            if and != other.flags[i] {
+                may_sub = false;
+            }
+
+            if and != self.flags[i] {
+                may_super = false;
+            }
+        }
+
+        let rel = if may_equiv {
+            Relation::Equivalent
+        }
+        else if may_super {
+            assert!(!may_sub);
+            Relation::Superset
+        }
+        else if may_sub {
+            Relation::Subset
+        }
+        else if may_disj {
+            Relation::Disjoint
+        }
+        else {
+            Relation::Intersecting
+        };
+
+        //println!("{:?}\n{:064b}{:064b}\n{:064b}{:064b}\n\n", rel, self.flags[0], self.flags[1], other.flags[0], other.flags[1]);
+
+        rel
+    }
+/*
+        let mut rels = vec![];
+        for i in 0..self.flags.len() {
+            if self.flags[i] == other.flags[i] {
+                rels.push(Relation::Equivalent);
+            }
+            else {
+                let and = self.flags[i] & other.flags[i];
+                if and == 0 {
+                    rels.push(Relation::Disjoint);
+                }
+                else if and == self.flags[i] {
+                    rels.push(Relation::Superset);
+                }
+                else if and == other.flags[i] {
+                    rels.push(Relation::Subset);
+                }
+                else {
+                    return Relation::Intersecting;
+                }
+            }
+        }
+        rels.into_iter().fold(Relation::Equivalent, move |acc, rel| {
+            match acc {
+                Relation::Equivalent => {
+                    rel
+                },
+                a => {
+                    if a == rel { a } else { Relation::Intersecting }
+                }
+            }
+        })
+    }
+*/
+    pub fn disjoint(&self, other: &Self) -> bool {
+        assert!(self.ntaxa == other.ntaxa);
+        for i in 0..self.flags.len() {
+            if self.flags[i] & other.flags[i] != 0 {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    pub fn union(&self, other: &Self) -> Self {
+        assert!(self.ntaxa == other.ntaxa);
+        let mut new = Self::blank(self.ntaxa);
+        for i in 0..new.flags.len() {
+            new.flags[i] |= self.flags[i];
+            new.flags[i] |= other.flags[i];
+        }
+        new
+    }
+
+    pub fn has(&self, id: usize) -> bool {
+        let chunk = id / CHUNK_LEN;
+        let idx = id % CHUNK_LEN;
+        (self.flags[chunk] & (1 << idx)) != 0
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TreeNode {
     pub id: usize,
@@ -40,14 +190,29 @@ impl TreeNode {
 
 #[derive(Clone, Debug)]
 pub struct Tree {
+    pub ntaxa: usize,
     pub nodes: Vec<TreeNode>,
+    pub level_order: Vec<usize>,
+    pub clades: Vec<Clade>,
 }
 
 impl Tree {
+    pub fn new(nodes: Vec<TreeNode>, ntaxa: usize) -> Self {
+        let mut tree = Tree {
+            ntaxa,
+            nodes,
+            level_order: vec![],
+            clades: vec![],
+        };
+        tree.update();
+        tree
+    }
+
     pub fn is_leaf(&self, id: usize) -> bool {
         self.nodes[id].lchild == 0 && self.nodes[id].rchild == 0
     }
 
+    /*
     pub fn num_leaves(&self) -> usize {
         let mut ctr = 0;
         for node in &self.nodes {
@@ -57,6 +222,7 @@ impl Tree {
         }
         ctr
     }
+    */
 
     pub fn dist(&self, a: usize, b: usize) -> f64 {
         self.nodes[a].height - self.nodes[b].height
@@ -159,8 +325,8 @@ impl Tree {
         coalescents
     }
 
-    pub fn level_order(&self) -> Vec<usize> {
-        let mut ordered = vec![];
+    pub fn update(&mut self) {
+        let mut ordering = vec![];
         let mut cur_lvl = vec![0];
         let mut nxt_lvl = vec![];
 
@@ -172,17 +338,35 @@ impl Tree {
                 if lchild != 0 { nxt_lvl.push(lchild); }
                 if rchild != 0 { nxt_lvl.push(rchild); }
             }
-            ordered.extend(cur_lvl);
+            ordering.extend(cur_lvl);
             cur_lvl = nxt_lvl;
             nxt_lvl = vec![];
         }
-        ordered
+
+        let mut clades = (0..self.nodes.len()).map(|_| Clade::null()).collect::<Vec<Clade>>(); 
+        for node_id in ordering.iter().rev() {
+            if self.is_leaf(*node_id) {
+                let mut clade = Clade::blank(self.ntaxa); 
+                clade.add(*node_id);
+                clades[*node_id] = clade;
+            }
+            else {
+                let left = self.nodes[*node_id].lchild;
+                let right = self.nodes[*node_id].rchild;
+                assert!(clades[left].disjoint(&clades[right]));
+                clades[*node_id] = clades[left].union(&clades[right]);
+            }
+            //println!("{:?} {:064b}{:064b}", *node_id, clades[*node_id].flags[0],clades[*node_id].flags[1]);
+        }
+
+        self.clades = clades;
+        self.level_order = ordering;
     }
 
     pub fn beagle_operations(&self, engine: &Engine, damage: &Damage) -> Vec<beagle::sys::Operation> {
         let inst = engine.beagle();
         let mut op_vec = vec![];
-        for node_id in self.level_order().iter().rev() {
+        for node_id in self.level_order.iter().rev() {
             if !self.is_leaf(*node_id)  && damage.is_marked_partials(*node_id) {
                 let node   = &self.nodes[*node_id];
 

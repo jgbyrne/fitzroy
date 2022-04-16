@@ -309,12 +309,14 @@ impl Move for TreeLocalMove {
                 if u_dist < c_dist { 1.0 / 3.0 } else { 1.0 }
             }
         };
+        tree.update();
 
         let revert = move |chain: &mut MCMC| {
             for node in nodes_backup {
                 let id = node.id;
                 chain.params.tree.tree.nodes[id] = node;
             }
+            chain.params.tree.tree.update();
         };
 
         let log_prior_likelihood_delta = if u_clade && tree.nodes[c].parent != v {
@@ -465,8 +467,11 @@ impl Move for TreeNodeSwap {
 
         let lengths = swap(tree, n1, n2);
 
+        tree.update();
+
         let revert = move |chain: &mut MCMC| {
             swap(&mut chain.params.tree.tree, n1, n2);
+            chain.params.tree.tree.update();
         };
 
         let log_prior_likelihood_delta = if lengths.0 <= 0.0 || lengths.1 <= 0.0 {
