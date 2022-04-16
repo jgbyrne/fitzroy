@@ -19,10 +19,8 @@ pub enum TreePrior {
 impl TreePrior {
     pub fn draw(&self, engine: &mut Engine) -> params::TreePriorParams {
         match self {
-            Self::Uniform { root } => {
-                params::TreePriorParams::Uniform {
-                    root: root.draw(engine),
-                }
+            Self::Uniform { .. } => {
+                params::TreePriorParams::Uniform
             },
             Self::Coalescent { num_intervals } => { 
                 params::TreePriorParams::Coalescent {
@@ -60,15 +58,13 @@ impl TreeModel {
         let mut prior = self.prior.draw(engine);
         let mut root_node = tree::TreeNode::blank();
 
-        match prior {
-            params::TreePriorParams::Uniform { root } => {
-                root_node.height = root;
-                root_node.length = 1.0;
-            },
-            params::TreePriorParams::Coalescent { .. } => {
-                root_node.height = self.calibrations.iter().map(|(_, c)| c.high).fold(0.0, |a: f64, b: f64| a.max(b)) * 1.1;
-                root_node.length = 1.0;
-            },
+        if self.calibrations.len() > 0 {
+            root_node.height = self.calibrations.iter().map(|(_, c)| c.high).fold(0.0, |a: f64, b: f64| a.max(b)) * 1.1;
+            root_node.length = 1.0;
+        }
+        else {
+            root_node.height = 100.0;
+            root_node.length = 1.0;
         }
 
         let mut nodes: Vec<tree::TreeNode> = vec![root_node];
@@ -172,7 +168,7 @@ impl TreeModel {
 
     }
 
-    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+    pub fn log_prior_likelihood(&self, params: &params::Parameters) -> f64 {
         match self.prior {
             TreePrior::Uniform { ref root } => {
                 let mut high = 0;
@@ -199,11 +195,8 @@ impl TreeModel {
                     }
                 }
                 
-                let root_prior = root;
-                if let params::TreePriorParams::Uniform { ref mut root } = params.tree.prior {
-                    *root = params.tree.tree.nodes[0].height; 
-                    product += root_prior.log_density(*root);
-                } else { unreachable!() }
+                let root_height = params.tree.tree.nodes[0].height; 
+                product += root.log_density(root_height);
 
                 product
             },
@@ -262,6 +255,9 @@ impl TreeModel {
                 } else { unreachable!() }
             },
         }
+
+        for constraint in config.constraints {
+        }
     }
 
 }
@@ -280,7 +276,7 @@ impl SubstitutionModel {
         }
     }
 
-    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+    pub fn log_prior_likelihood(&self, params: &params::Parameters) -> f64 {
         let pi_one_param = match params.traits.subst {
             params::SubstitutionModelParams::BinaryGTR { pi_one } => pi_one,
         };
@@ -346,7 +342,7 @@ impl ASRV {
         self.params_for_shape(shape)
     }
 
-    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+    pub fn log_prior_likelihood(&self, params: &params::Parameters) -> f64 {
         if self.enabled {
             self.shape.log_density(params.traits.asrv.shape)
         }
@@ -381,7 +377,7 @@ impl ABRV {
         params::ABRVParams { shape, rates, assignment }
     }
 
-    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+    pub fn log_prior_likelihood(&self, params: &params::Parameters) -> f64 {
         if self.enabled {
             self.shape.log_density(params.traits.abrv.shape)
         }
@@ -411,13 +407,22 @@ impl TraitsModel {
         }
     }
 
-    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+    pub fn log_prior_likelihood(&self, params: &params::Parameters) -> f64 {
          let log_prior_base = self.base.log_density(params.traits.base); 
          let log_prior_asrv = self.asrv.log_prior_likelihood(params);
          let log_prior_abrv = self.abrv.log_prior_likelihood(params);
          let log_prior_subst = self.subst.log_prior_likelihood(params);
 
          log_prior_base + log_prior_asrv + log_prior_abrv + log_prior_subst
+    }
+
+    pub fn prior_likelihood_ledger(&self, params: &params::Parameters) -> String {
+        let mut s = String::new();
+        s.push_str(&format!("\tBase Rate Prior Likelihood   : {}\n", self.base.log_density(params.traits.base)));
+        s.push_str(&format!("\tASRV Prior Likelihood        : {}\n", self.asrv.log_prior_likelihood(params)));
+        s.push_str(&format!("\tABRV Prior Likelihood        : {}\n", self.abrv.log_prior_likelihood(params)));
+        s.push_str(&format!("\tSubstitution Prior Likelihood: {}\n", self.subst.log_prior_likelihood(params)));
+        s
     }
 }
 
@@ -435,7 +440,15 @@ impl Configuration {
         }
     }
 
-    pub fn log_prior_likelihood(&self, params: &mut params::Parameters) -> f64 {
+    pub fn prior_likelihood_ledger(&self, params: &params::Parameters) -> String {
+        let mut s = String::new();
+        s.push_str(&format!("Tree Prior Likelihood  : {}\n", self.tree.log_prior_likelihood(params)));
+        s.push_str(&format!("Traits Prior Likelihood: {}\n", self.traits.log_prior_likelihood(params)));
+        s.push_str(&self.traits.prior_likelihood_ledger(params));
+        s
+    }
+
+    pub fn log_prior_likelihood(&self, params: &params::Parameters) -> f64 {
         self.tree.log_prior_likelihood(params) + self.traits.log_prior_likelihood(params)
     }
 

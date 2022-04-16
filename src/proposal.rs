@@ -56,10 +56,12 @@ impl Propose {
         unreachable!();
     }
 
-    pub fn move_log(&self) {
+    pub fn move_ledger(&self) -> String {
+        let mut s = String::new();
         for mv in self.moves.iter() {
-            println!("{:<25} {:<15} {:<15}", mv.1, mv.2, mv.3);
+            s.push_str(&format!("{:<25} {:<15} {:<15}\n", mv.1, mv.2, mv.3));
         }
+        s
     }
 }
 
@@ -732,13 +734,15 @@ impl Move for ASRVShapeMove {
 
         let proposal = PriorDist::Normal { mean: cur_asrv_shape, sigma: nudge };
         let new_asrv_shape = proposal.draw(engine);
-        params.traits.asrv = config.traits.asrv.params_for_shape(new_asrv_shape);
 
         let revert = move |chain: &mut MCMC| {
             chain.params.traits.asrv.shape = cur_asrv_shape;
         };
 
         let log_prior_likelihood_delta = if new_asrv_shape > 0.0 {
+            // Only actually update params if the shape is valid
+            params.traits.asrv = config.traits.asrv.params_for_shape(new_asrv_shape);
+
             let old = config.traits.asrv.shape.log_density(cur_asrv_shape);
             let new = config.traits.asrv.shape.log_density(new_asrv_shape);
             new - old

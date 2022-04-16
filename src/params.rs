@@ -3,7 +3,7 @@ use beagle;
 
 #[derive(Clone, Debug)]
 pub enum TreePriorParams { 
-    Uniform { root: f64 },
+    Uniform,
     Coalescent { sizes: Vec<usize>, pops: Vec<f64> },
 }
 

@@ -14,6 +14,7 @@ pub enum PriorDist {
     Gamma { alpha: f64, beta: f64 },
     Normal { mean: f64, sigma: f64 },
     LogNormal { location: f64, scale: f64 },
+    HalfNormal { sigma: f64 },
 }
 
 impl PriorDist {
@@ -44,6 +45,11 @@ impl PriorDist {
                 let dist = LogNormal::new(*location, *scale).unwrap();
                 dist.sample(&mut engine.rng)
             },
+            PriorDist::HalfNormal { sigma } => {
+                let dist = Normal::new(0.0, *sigma).unwrap();
+                dist.sample(&mut engine.rng).abs()
+            },
+
         }
     }
 
@@ -70,7 +76,11 @@ impl PriorDist {
             PriorDist::LogNormal { location, scale } => {
                 let dist = LogNormal::new(*location, *scale).unwrap();
                 dist.ln_pdf(x)
-            }
+            },
+            PriorDist::HalfNormal { sigma } => {
+                let dist = Normal::new(0.0, *sigma).unwrap();
+                dist.ln_pdf(x) + (2.0 as f64).ln()
+            },
         }
     }
 }
