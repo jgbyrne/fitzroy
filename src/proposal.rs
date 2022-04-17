@@ -374,9 +374,15 @@ impl Move for TreeTipMove {
                         f64::NEG_INFINITY
                     }
                     else {
-                        params.tree.tree.nodes[node_id].height = new_height;
+                        params.tree.tree.nodes[node_id].height   = new_height;
                         params.tree.tree.nodes[parent_id].height = new_parent_height;
                         params.tree.tree.nodes[parent_id].length = params.tree.tree.dist(grandparent_id, parent_id);
+                        let other = if params.tree.tree.nodes[parent_id].lchild == node_id {
+                            params.tree.tree.nodes[parent_id].rchild
+                        } else { 
+                            params.tree.tree.nodes[parent_id].lchild
+                        };
+                        params.tree.tree.nodes[other].length = params.tree.tree.dist(parent_id, other);
                         config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
                     }
                 }
