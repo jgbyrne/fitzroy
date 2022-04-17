@@ -353,10 +353,10 @@ impl Move for TreeTipMove {
 
         let parent_id = params.tree.tree.nodes[node_id].parent;
 
-        let log_prior_likelihood_delta = if new_height > high {
+        let log_prior_likelihood_delta = if new_height >= high {
             f64::NEG_INFINITY
         }
-        else if new_height < low {
+        else if new_height <= low {
             f64::NEG_INFINITY
         }
         else {
@@ -370,10 +370,7 @@ impl Move for TreeTipMove {
                 else {
                     let new_parent_height = new_height + params.tree.tree.nodes[node_id].length;
                     let grandparent_id = params.tree.tree.nodes[node_id].parent;
-                    if grandparent_id == 0 {
-                        f64::NEG_INFINITY
-                    }
-                    else if params.tree.tree.nodes[grandparent_id].height < new_parent_height {
+                    if params.tree.tree.nodes[grandparent_id].height <= new_parent_height {
                         f64::NEG_INFINITY
                     }
                     else {
@@ -385,7 +382,7 @@ impl Move for TreeTipMove {
                 }
             }
             else {
-                if params.tree.tree.nodes[parent_id].height < new_height {
+                if params.tree.tree.nodes[parent_id].height <= new_height {
                     f64::NEG_INFINITY
                 }
                 else {
