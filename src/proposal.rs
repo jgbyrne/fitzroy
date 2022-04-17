@@ -345,7 +345,7 @@ impl Move for TreeTipMove {
         let cur_log_prior_likelihood = config.tree.log_prior_likelihood(params);
 
         let cur_height = params.tree.tree.nodes[node_id].height;
-        let cur_length = params.tree.tree.nodes[node_id].length;
+        let mut cur_nodes = vec![];
 
         let window = (high - low) / 5.0;
         let proposal = PriorDist::Uniform { low: cur_height - window, high: cur_height + window };
@@ -370,19 +370,30 @@ impl Move for TreeTipMove {
                 else {
                     let new_parent_height = new_height + params.tree.tree.nodes[node_id].length;
                     let grandparent_id = params.tree.tree.nodes[node_id].parent;
+                    
+                    let sibling_id = if params.tree.tree.nodes[parent_id].lchild == node_id {
+                        params.tree.tree.nodes[parent_id].rchild
+                    } else { 
+                        params.tree.tree.nodes[parent_id].lchild
+                    };
+
                     if params.tree.tree.nodes[grandparent_id].height <= new_parent_height {
                         f64::NEG_INFINITY
                     }
+                    else if params.tree.tree.nodes[sibling_id].height >= new_parent_height {
+                        f64::NEG_INFINITY
+                    }
                     else {
-                        params.tree.tree.nodes[node_id].height   = new_height;
-                        params.tree.tree.nodes[parent_id].height = new_parent_height;
-                        params.tree.tree.nodes[parent_id].length = params.tree.tree.dist(grandparent_id, parent_id);
-                        let other = if params.tree.tree.nodes[parent_id].lchild == node_id {
-                            params.tree.tree.nodes[parent_id].rchild
-                        } else { 
-                            params.tree.tree.nodes[parent_id].lchild
-                        };
-                        params.tree.tree.nodes[other].length = params.tree.tree.dist(parent_id, other);
+                        cur_nodes.push((node_id, params.tree.tree.nodes[node_id].clone()));
+                        cur_nodes.push((parent_id, params.tree.tree.nodes[parent_id].clone()));
+                        cur_nodes.push((sibling_id, params.tree.tree.nodes[sibling_id].clone()));
+
+                        params.tree.tree.nodes[node_id].height    = new_height;
+                        params.tree.tree.nodes[parent_id].height  = new_parent_height;
+
+                        params.tree.tree.nodes[parent_id].length  = params.tree.tree.dist(grandparent_id, parent_id);
+                        params.tree.tree.nodes[sibling_id].length = params.tree.tree.dist(parent_id, sibling_id);
+
                         config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
                     }
                 }
@@ -392,6 +403,9 @@ impl Move for TreeTipMove {
                     f64::NEG_INFINITY
                 }
                 else {
+                    cur_nodes.push((node_id, params.tree.tree.nodes[node_id].clone()));
+                    cur_nodes.push((parent_id, params.tree.tree.nodes[parent_id].clone()));
+
                     params.tree.tree.nodes[node_id].height = new_height;
                     params.tree.tree.nodes[node_id].length = params.tree.tree.dist(parent_id, node_id);
                     config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
@@ -400,9 +414,10 @@ impl Move for TreeTipMove {
         };
 
         let revert = move |chain: &mut MCMC| {
-            let node = &mut chain.params.tree.tree.nodes[node_id];
-            node.height = cur_height;
-            node.length = cur_length;
+            let nodes = &mut chain.params.tree.tree.nodes;
+            for (id, node) in cur_nodes {
+                nodes[id] = node;
+            }
         };
 
         let mut damage = Damage::blank(&params.tree.tree);
