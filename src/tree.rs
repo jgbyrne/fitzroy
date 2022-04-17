@@ -24,7 +24,7 @@ pub enum Relation {
 
 static CHUNK_LEN: usize = 8 * std::mem::size_of::<usize>();
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Clade {
     pub ntaxa: usize,
     flags: Vec<usize>,

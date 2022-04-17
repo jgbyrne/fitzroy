@@ -1,4 +1,6 @@
 extern crate beagle;
+
+use std::collections::{HashMap, VecDeque};
 use rand::Rng;
 use rand::rngs::ThreadRng;
 
@@ -11,6 +13,67 @@ pub mod cfg;
 pub mod params;
 pub mod tree;
 pub mod nexus;
+
+pub struct Summary {
+    pub snapshots: usize,
+    pub clades: HashMap<tree::Clade, (usize, Vec<f64>)>,
+    pub trees: Vec<tree::Tree>
+}
+
+impl Summary {
+    pub fn blank() -> Self {
+        Summary {
+            snapshots: 0,
+            clades: HashMap::new(),
+            trees: Vec::new(),
+        }
+    }
+
+    pub fn snapshot(&mut self, tree: &tree::Tree) {
+        self.snapshots += 1;
+        for (node_id, clade) in tree.clades.iter().enumerate() {
+            self.clades.entry(clade.clone())
+                .and_modify(|count_ages| {
+                    count_ages.0 += 1;
+                    count_ages.1.push(tree.nodes[node_id].height);
+                }).or_insert((1, vec![tree.nodes[node_id].height]));
+        }
+        self.trees.push(tree.clone());
+    }
+
+    pub fn mcc_tree(&self) -> tree::Tree {
+        let mut mcc = self.trees.iter().max_by_key(|tree|    
+            tree.clades.iter().map(|c| self.clades[c].0).sum::<usize>()
+        ).unwrap().clone();
+
+        for (node_id, clade) in mcc.clades.iter().enumerate() {
+            let mut heights = self.clades[clade].1.clone();
+            heights.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let n = heights.len();
+            let median_height = match n % 2 {
+                0 => {
+                    (heights[n / 2] + heights[(n / 2) + 1]) / 2.0
+                },
+                1 => {
+                    heights[(n / 2) + 1]
+                },
+                _ => unreachable!(),
+            };
+            mcc.nodes[node_id].height = median_height;
+        }
+
+        let mut stack = VecDeque::new();
+        stack.push_back(mcc.nodes[0].lchild);
+        stack.push_back(mcc.nodes[0].rchild);
+
+        while let Some(n) = stack.pop_front() {
+            mcc.nodes[n].length = mcc.dist(mcc.nodes[n].parent, n);
+        }
+
+        mcc
+    }
+
+}
 
 pub struct Damage {
     partials: Vec<bool>,
