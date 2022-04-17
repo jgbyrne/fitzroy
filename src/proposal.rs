@@ -370,8 +370,8 @@ impl Move for TreeTipMove {
                     f64::NEG_INFINITY
                 }
                 else {
-                    let new_parent_height = new_height + params.tree.tree.nodes[node_id].length;
-                    let grandparent_id = params.tree.tree.nodes[node_id].parent;
+                    let new_parent_height = new_height + params.tree.tree.dist(parent_id, node_id);
+                    let grandparent_id = params.tree.tree.nodes[parent_id].parent;
                     
                     let sibling_id = if params.tree.tree.nodes[parent_id].lchild == node_id {
                         params.tree.tree.nodes[parent_id].rchild
@@ -412,13 +412,13 @@ impl Move for TreeTipMove {
                 }
                 else {
                     cur_nodes.push((node_id, params.tree.tree.nodes[node_id].clone()));
-                    cur_nodes.push((parent_id, params.tree.tree.nodes[parent_id].clone()));
 
                     damage.mark_partials_to_root(&params.tree.tree, node_id);
                     damage.mark_matrix(node_id);
 
                     params.tree.tree.nodes[node_id].height = new_height;
                     params.tree.tree.nodes[node_id].length = params.tree.tree.dist(parent_id, node_id);
+
                     config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
                 }
             }
