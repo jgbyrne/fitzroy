@@ -353,6 +353,8 @@ impl Move for TreeTipMove {
 
         let parent_id = params.tree.tree.nodes[node_id].parent;
 
+        let mut damage = Damage::blank(&params.tree.tree);
+
         let log_prior_likelihood_delta = if new_height >= high {
             f64::NEG_INFINITY
         }
@@ -388,6 +390,12 @@ impl Move for TreeTipMove {
                         cur_nodes.push((parent_id, params.tree.tree.nodes[parent_id].clone()));
                         cur_nodes.push((sibling_id, params.tree.tree.nodes[sibling_id].clone()));
 
+                        damage.mark_partials_to_root(&params.tree.tree, node_id);
+                        damage.mark_partials_to_root(&params.tree.tree, sibling_id);
+                        damage.mark_matrix(node_id);
+                        damage.mark_matrix(sibling_id);
+                        damage.mark_matrix(parent_id);
+
                         params.tree.tree.nodes[node_id].height    = new_height;
                         params.tree.tree.nodes[parent_id].height  = new_parent_height;
 
@@ -406,6 +414,9 @@ impl Move for TreeTipMove {
                     cur_nodes.push((node_id, params.tree.tree.nodes[node_id].clone()));
                     cur_nodes.push((parent_id, params.tree.tree.nodes[parent_id].clone()));
 
+                    damage.mark_partials_to_root(&params.tree.tree, node_id);
+                    damage.mark_matrix(node_id);
+
                     params.tree.tree.nodes[node_id].height = new_height;
                     params.tree.tree.nodes[node_id].length = params.tree.tree.dist(parent_id, node_id);
                     config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
@@ -419,10 +430,6 @@ impl Move for TreeTipMove {
                 nodes[id] = node;
             }
         };
-
-        let mut damage = Damage::blank(&params.tree.tree);
-        damage.mark_partials_to_root(&params.tree.tree, node_id);
-        damage.mark_matrix(node_id);
 
         MoveResult {
             log_prior_likelihood_delta,
