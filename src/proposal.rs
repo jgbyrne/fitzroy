@@ -103,8 +103,6 @@ impl Move for TreeLocalMove {
             }
         };
 
-        let u_clade = tree.nodes[u].clade;
-
         let v = tree.node_parent(u).unwrap();
 
         let a = tree.lchild(u);
@@ -319,14 +317,8 @@ impl Move for TreeLocalMove {
             chain.params.tree.tree.update();
         };
 
-        let log_prior_likelihood_delta = if u_clade && tree.nodes[c].parent != v {
-            f64::NEG_INFINITY
-        } else { 
-            config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
-        };
-
         MoveResult {
-            log_prior_likelihood_delta,
+            log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
             log_hastings_ratio: hastings,
             damage,
             revert: Box::new(revert),
@@ -367,15 +359,42 @@ impl Move for TreeTipMove {
         else if new_height < low {
             f64::NEG_INFINITY
         }
-        else if params.tree.tree.nodes[parent_id].height < new_height {
-            f64::NEG_INFINITY
-        }
         else {
-            params.tree.tree.nodes[node_id].height = new_height;
-            params.tree.tree.nodes[node_id].length = params.tree.tree.dist(parent_id, node_id);
-            config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
+            // half the time we move the parent as well as the node
+            // this is primarily to ensure we can make winning moves on `pinned` nodes
+            let move_parent = engine.rng.gen_bool(0.5);
+            if move_parent {
+                if parent_id == 0 {
+                    f64::NEG_INFINITY
+                }
+                else {
+                    let new_parent_height = new_height + params.tree.tree.nodes[node_id].length;
+                    let grandparent_id = params.tree.tree.nodes[node_id].parent;
+                    if grandparent_id == 0 {
+                        f64::NEG_INFINITY
+                    }
+                    else if params.tree.tree.nodes[grandparent_id].height < new_parent_height {
+                        f64::NEG_INFINITY
+                    }
+                    else {
+                        params.tree.tree.nodes[node_id].height = new_height;
+                        params.tree.tree.nodes[parent_id].height = new_parent_height;
+                        params.tree.tree.nodes[parent_id].length = params.tree.tree.dist(grandparent_id, parent_id);
+                        config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
+                    }
+                }
+            }
+            else {
+                if params.tree.tree.nodes[parent_id].height < new_height {
+                    f64::NEG_INFINITY
+                }
+                else {
+                    params.tree.tree.nodes[node_id].height = new_height;
+                    params.tree.tree.nodes[node_id].length = params.tree.tree.dist(parent_id, node_id);
+                    config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood
+                }
+            }
         };
-
 
         let revert = move |chain: &mut MCMC| {
             let node = &mut chain.params.tree.tree.nodes[node_id];
