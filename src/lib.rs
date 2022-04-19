@@ -1,3 +1,6 @@
+// =-=-=-=-= lib.rs =-=-=-==-=
+// This is the core of fitzroy, a phylolinguistic MCMC engine
+
 extern crate beagle;
 
 use std::collections::{HashMap, VecDeque};
@@ -14,6 +17,9 @@ pub mod params;
 pub mod tree;
 pub mod nexus;
 
+// `Summary` stores snapshots of trees
+// :: `snapshots` stores the number of snapshots 
+// :: `clades` tracks the frequency of clades
 pub struct Summary {
     pub snapshots: usize,
     pub clades: HashMap<tree::Clade, (usize, Vec<f64>)>,
@@ -21,6 +27,7 @@ pub struct Summary {
 }
 
 impl Summary {
+    // Create an empty `Summary`
     pub fn blank() -> Self {
         Summary {
             snapshots: 0,
@@ -29,6 +36,7 @@ impl Summary {
         }
     }
 
+    // Snapshot a `Tree`, adding it to this `Summary`
     pub fn snapshot(&mut self, tree: &tree::Tree) {
         self.snapshots += 1;
         for (node_id, clade) in tree.clades.iter().enumerate() {
@@ -41,11 +49,14 @@ impl Summary {
         self.trees.push(tree.clone());
     }
 
+    // Build an maximum-clade-credibility (MCC) tree from this `Summary`
     pub fn mcc_tree(&self) -> tree::Tree {
+        // Search every snapshotted tree for the one with the highest credibility
         let mut mcc = self.trees.iter().max_by_key(|tree|    
             tree.clades.iter().map(|c| self.clades[c].0).sum::<usize>()
         ).unwrap().clone();
 
+        // Set each clade's height to its median snapshotted value
         for (node_id, clade) in mcc.clades.iter().enumerate() {
             let mut heights = self.clades[clade].1.clone();
             heights.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -62,6 +73,9 @@ impl Summary {
             mcc.nodes[node_id].height = median_height;
         }
 
+        // Calculate branch lengths for new node heights
+        // :: technically they could be negative!
+        // :: this is just part of how MCC works
         let mut stack = VecDeque::new();
         stack.push_back(mcc.nodes[0].lchild);
         stack.push_back(mcc.nodes[0].rchild);
@@ -77,12 +91,14 @@ impl Summary {
 
 }
 
+// `Damage` is used to track what state an MCMC move has invalidated
 pub struct Damage {
-    partials: Vec<bool>,
-    matrices: Vec<bool>,
+    partials: Vec<bool>, // A flag for every node partial
+    matrices: Vec<bool>, // A flag for every node matrix
 }
 
 impl Damage {
+    // Create `Damage` with all flags `false`
     pub fn blank(tree: &tree::Tree) -> Self {
         let n_nodes = tree.nodes.len();
         Damage { 
@@ -91,6 +107,7 @@ impl Damage {
         }
     }
 
+    // Create `Damage` with all flags `true`
     pub fn full(tree: &tree::Tree) -> Self {
         let mut damage = Self::blank(tree);
         damage.mark_all_partials();
@@ -118,6 +135,12 @@ impl Damage {
         self.partials.iter_mut().for_each(|item| *item = true);
     }
 
+    pub fn mark_all_matrices(&mut self) {
+        self.matrices.iter_mut().for_each(|item| *item = true);
+    }
+
+    // If a node's partials are invalidated, all node partials between
+    // it and the root are necessarily also invalidated
     pub fn mark_partials_to_root(&mut self, tree: &tree::Tree, node_id: usize) {
         self.mark_partials(node_id);
         let mut cur = node_id;
@@ -125,10 +148,6 @@ impl Damage {
             self.mark_partials(parent);
             cur = parent;
         }
-    }
-
-    pub fn mark_all_matrices(&mut self) {
-        self.matrices.iter_mut().for_each(|item| *item = true);
     }
 }
 
@@ -235,9 +254,12 @@ impl<'c> MCMC<'c> {
                 self.log_likelihood()
             };
 
-            if likelihood > 0.0 { // something has gone very wrong...
-               // if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
-               // (result.revert)(self);
+            if likelihood > 0.0 { 
+                // Something has gone very wrong!
+                // :: We could try and revert but since this is probably a fatal bug
+                // :: we might as well leave the system state alone to help debugging
+                // if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
+                // (result.revert)(self);
                 return false; 
             }
 
@@ -252,7 +274,6 @@ impl<'c> MCMC<'c> {
         } else { false };
 
         if !accepted { 
-            //println!("\t...revert");
             if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
             (result.revert)(self);
         }
