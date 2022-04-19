@@ -151,6 +151,11 @@ impl Damage {
     }
 }
 
+// `Engine` is a struct for the 'implementation state' of the MCMC process
+// :: `run` is a flag indicating if the `Engine` has been initialised
+// :: `rng` is a random number generator
+// :: `partial_damage`: whether the beagle `Instance` supports buffer-flipping
+// :: `inst` the beagle `Instance` provided by libhmsbeagle-rs
 pub struct Engine {
     run: bool,
     rng: ThreadRng,
@@ -159,19 +164,23 @@ pub struct Engine {
 }
 
 impl Engine {
+    // Create a new `Engine`
     fn forge<'c>(_config: &'c cfg::Configuration, partial_damage: bool) -> Self {
         Engine { run: false, rng: rand::thread_rng(), partial_damage, inst: None }
     }
 
+    // Intialise the `Engine` 
     fn start<'c>(&mut self, config: &'c cfg::Configuration, params: &params::Parameters) -> bool {
         if self.run { panic!("Tried to start running Engine") }
 
+        // Create the beagle `Instance`
         let n_sites = config.tree.data.traits;
         let n_tips = config.tree.data.num_tips() as i32;
-        let n_nodes = (n_tips * 2) - 1; //TODO trial buffers
-        let mut inst = beagle::Instance::new(2, n_sites, 4, n_nodes, n_tips, 1,
+        let n_internals = (n_tips * 2) - 1; /* By the FA Cup Theorem :-) */
+        let mut inst = beagle::Instance::new(2, n_sites, 4, n_internals, n_tips, 1,
                                              true, true, self.partial_damage);
 
+        // Assign tip partials
         for tip in &config.tree.data.tips {
             let tip_beagle_id = params.tree.tree.beagle_id(tip.id);
             inst.set_tip_data_partial(tip_beagle_id, tip.data.clone());
@@ -194,6 +203,7 @@ impl Engine {
     }
 }
 
+// `MCMC` - Core structure for an instance of a Markov Chain Monte Carlo
 pub struct MCMC<'c> {
     pub config: &'c cfg::Configuration,
     pub params: params::Parameters,
@@ -203,6 +213,7 @@ pub struct MCMC<'c> {
 }
 
 impl<'c> MCMC<'c> {
+    // Create a new MCMC instance for a given `Configuration`
     pub fn new(config: &'c cfg::Configuration) -> Self {
         let mut engine = Engine::forge(&config, true);
         let params = config.draw(&mut engine);
@@ -221,6 +232,8 @@ impl<'c> MCMC<'c> {
         chain
     }
 
+    // Clone a new instance from this one
+    // (Intended for multi-chain support, not actually used as of yet)
     pub fn clone(&self) -> Self {
         let mut engine = Engine::forge(&self.config, self.engine.partial_damage);
         engine.start(&self.config, &self.params);
@@ -234,20 +247,29 @@ impl<'c> MCMC<'c> {
         }
     }
 
+    // If we have enabled partial damage, we can flip onto new buffers in the beagle `Instance`
     pub fn flip_by_damage(&mut self, damage: &Damage) {
+        assert!(self.engine.partial_damage);
         let inst = self.engine.beagle_mut();
         for node in 0..self.params.tree.tree.nodes.len() {
             let beagle_id = self.params.tree.tree.beagle_id(node);
             if damage.is_marked_partials(node) { inst.flip_alt_partials(beagle_id) }
-            if node != 0 && damage.is_marked_matrix(node) { inst.flip_alt_matrix(beagle_id); /* println!("\tFlipping: {}", beagle_id); */ }
+            if node != 0 && damage.is_marked_matrix(node) { inst.flip_alt_matrix(beagle_id); }
         }
     }
 
+    // Perform one step of the Metropolis-Hastings algorithm
     pub fn step(&mut self) -> bool {
+
+        // Draw a move from the proposal distribution and perform it 
         let (result, move_id) = self.propose.make_move(&self.config, &mut self.params, &mut self.engine);
+
+        // If we support partial damage then flip the appropriate buffers 
         if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
 
         let accepted = if result.log_prior_likelihood_delta != f64::NEG_INFINITY {
+
+            // Calculate likelihood of data given paramaterisation
             let likelihood = if self.engine.partial_damage {
                 self.log_likelihood_with_damage(&result.damage)
             } else {
@@ -263,27 +285,34 @@ impl<'c> MCMC<'c> {
                 return false; 
             }
 
+            // Calculate acceptance probability
             let likelihood_delta = likelihood - self.last_log_likelihood;
             let log_ratio = result.log_prior_likelihood_delta + likelihood_delta + result.log_hastings_ratio;
 
+            // Accept if acceptance probability beats a uniform random variable in [0, 1]
             if log_ratio > util::log_uniform(&mut self.engine) {
                 self.last_log_likelihood = likelihood;
                 true
             } else { false }
 
+        // If the prior likelihood delta is NEG_INFINITY then reject out-of-hand
         } else { false };
 
         if !accepted { 
+            // Revert to pre-move state 
             if self.engine.partial_damage { self.flip_by_damage(&result.damage); }
             (result.revert)(self);
         }
         else {
+            // Tally number of acceptances per move
             self.propose.moves[move_id].3 += 1;
         }
 
+        // MCMC step completed without error
         true 
     }
-
+    
+    // Calculate root log likelihood for some damage 
     pub fn log_likelihood_with_damage(&mut self, damage: &Damage) -> f64 {
         let tree = &self.params.tree.tree;
 
@@ -304,17 +333,18 @@ impl<'c> MCMC<'c> {
         inst.calculate_root_log_likelihood(tree.beagle_id(0), 0)
     }
 
+    // Fully calculate root log likelihood (full damage)
     pub fn log_likelihood(&mut self) -> f64 {
         self.log_likelihood_with_damage(&Damage::full(&self.params.tree.tree))
     }
 
+    // Fully calculate prior likelihood
     pub fn log_prior_likelihood(&mut self) -> f64 {
         self.config.log_prior_likelihood(&mut self.params)
     }
 
+    // Fully calculate posterior likelihood
     pub fn log_posterior_likelihood(&mut self) -> f64 {
         self.log_likelihood() + self.log_prior_likelihood()
     }
 }
-
-
