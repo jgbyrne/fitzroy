@@ -68,6 +68,8 @@ impl Summary {
 
         while let Some(n) = stack.pop_front() {
             mcc.nodes[n].length = mcc.dist(mcc.nodes[n].parent, n);
+            if mcc.nodes[n].lchild != 0 { stack.push_back(mcc.nodes[n].lchild) }
+            if mcc.nodes[n].rchild != 0 { stack.push_back(mcc.nodes[n].rchild) }
         }
 
         mcc

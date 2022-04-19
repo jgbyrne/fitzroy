@@ -331,7 +331,7 @@ impl TreeModel {
                 }
                 else {
                     let branch_length = tree.dist(cur, outgroup);
-                    let mut penalty = PriorDist::HalfNormal { sigma: 1.0 }.log_density(branch_length);
+                    let mut penalty = PriorDist::HalfNormal { sigma: 0.01 }.log_density(branch_length);
                     if penalty < -30_000.0 { penalty = -30_000.0 }
                     product -= penalty
                 }
