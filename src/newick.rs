@@ -1,3 +1,8 @@
+// =-=-=-=-= newick.rs =-=-=-=-=
+// A 'newick' description is a way of compactly notating a dated phylogeny
+// This file implements a newick parser
+// It is no longer used or exposed by the fitzroy library
+
 use crate::tree::*;
 
 #[derive(Debug)]

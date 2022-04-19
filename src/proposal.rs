@@ -1,3 +1,10 @@
+// =-=-=-=-= proposal.rs =-=-=-=-=
+// Implements the proposal distribution of the Metropolis-Hastings algorithm
+// :: Calling Propose::make_move() selects and performs a random Move
+// :: A Move is a reversible random augmentation to the `Parameters`
+// :: Each Move returns the prior likelihood delta, the hastings ratio, and
+// :: a closure that reverts it in case the augmentation is not accepted
+
 use crate::{MCMC, Engine, Damage};
 use crate::params;
 use crate::cfg;

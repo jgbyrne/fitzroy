@@ -1,3 +1,11 @@
+// =-=-=-=-= cfg.rs =-=-=-=-=
+// This file contains the `Configuration`; the schema for an inference run
+// :: A `Configuration` is immutable from the point of creation
+// :: A `Paramaters` structure maps onto it, containing a specific paramaterisation 
+// :: This file also contains the logic for drawing an initial paramaterisation
+// :: at random, and also calculating the prior log likelihood of a paramaterisation,
+// :: within the context of a specific `Configuration`.
+
 use crate::proposal;
 use crate::tree;
 use crate::params;

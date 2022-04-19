@@ -1,3 +1,6 @@
+// =-=-=-=-= util.rs =-=-=-=-=
+// Utility functions, mostly statistical primatives
+
 use crate::Engine;
 
 use rand::Rng;
@@ -85,6 +88,7 @@ impl PriorDist {
     }
 }
 
+// ln(x) : x distributed uniformly in [0, 1]
 pub fn log_uniform(engine: &mut Engine) -> f64 {
     PriorDist::Uniform { low: 0.0, high: 1.0 }.draw(engine).ln()
 }
@@ -95,6 +99,8 @@ fn log_normal_quantile(mu: f64, sigma: f64, p: f64) -> f64 {
     exponent.exp()
 }
 
+// Split log normal distribution into n categories
+// :: Used for ABRV rates
 pub fn log_normal_categories(sigma: f64, n: usize) -> Vec<f64> {
     let mut cats = Vec::with_capacity(n);
 

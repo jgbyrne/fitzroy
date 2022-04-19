@@ -1,3 +1,7 @@
+// =-=-=-=-= tree.rs =-=-=-=-=
+// Contains the core `Tree` structure, as well as auxilliary
+// structures and methods for working with trees
+
 use beagle;
 
 use std::collections::HashMap;
@@ -98,44 +102,9 @@ impl Clade {
             Relation::Intersecting
         };
 
-        //println!("{:?}\n{:064b}{:064b}\n{:064b}{:064b}\n\n", rel, self.flags[0], self.flags[1], other.flags[0], other.flags[1]);
-
         rel
     }
-/*
-        let mut rels = vec![];
-        for i in 0..self.flags.len() {
-            if self.flags[i] == other.flags[i] {
-                rels.push(Relation::Equivalent);
-            }
-            else {
-                let and = self.flags[i] & other.flags[i];
-                if and == 0 {
-                    rels.push(Relation::Disjoint);
-                }
-                else if and == self.flags[i] {
-                    rels.push(Relation::Superset);
-                }
-                else if and == other.flags[i] {
-                    rels.push(Relation::Subset);
-                }
-                else {
-                    return Relation::Intersecting;
-                }
-            }
-        }
-        rels.into_iter().fold(Relation::Equivalent, move |acc, rel| {
-            match acc {
-                Relation::Equivalent => {
-                    rel
-                },
-                a => {
-                    if a == rel { a } else { Relation::Intersecting }
-                }
-            }
-        })
-    }
-*/
+
     pub fn disjoint(&self, other: &Self) -> bool {
         assert!(self.ntaxa == other.ntaxa);
         for i in 0..self.flags.len() {
@@ -209,18 +178,6 @@ impl Tree {
     pub fn is_leaf(&self, id: usize) -> bool {
         self.nodes[id].lchild == 0 && self.nodes[id].rchild == 0
     }
-
-    /*
-    pub fn num_leaves(&self) -> usize {
-        let mut ctr = 0;
-        for node in &self.nodes {
-            if node.lchild == 0 && node.rchild == 0 {
-               ctr += 1; 
-            }
-        }
-        ctr
-    }
-    */
 
     pub fn dist(&self, a: usize, b: usize) -> f64 {
         self.nodes[a].height - self.nodes[b].height
@@ -462,5 +419,3 @@ fn write_node_newick(tree: &Tree, data: &TreeData, node: usize) -> String {
 pub fn write_newick(tree: &Tree, data: &TreeData) -> String {
     format!("({},{});", write_node_newick(tree, data, tree.lchild(0)), write_node_newick(tree, data, tree.rchild(0)))
 }
-
-

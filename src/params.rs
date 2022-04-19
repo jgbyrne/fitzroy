@@ -1,3 +1,9 @@
+// =-=-=-=-= params.rs =-=-=-=-=
+// A `Parameters` struct contains a specific parameterisation
+// that maps onto a corresponding `Configuration`.
+// :: The space of possible `Paramaters` objects is equivalent
+// :: to the paramater space of the markovian process
+
 use crate::tree;
 use beagle;
 
@@ -41,6 +47,7 @@ pub struct TraitsParams {
 }
 
 impl TraitsParams {
+    // Build a beagle `Model` from these substitution model paramaters 
     pub fn model(&self) -> beagle::Model {
         let (freqs, evals, evecs, inv_evecs) = match self.subst {
             SubstitutionModelParams::BinaryGTR { pi_one } => {

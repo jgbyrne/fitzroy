@@ -7,9 +7,6 @@ use std::collections::{HashMap, VecDeque};
 use rand::Rng;
 use rand::rngs::ThreadRng;
 
-#[cfg(test)]
-mod test;
-
 pub mod util;
 pub mod proposal;
 pub mod cfg;

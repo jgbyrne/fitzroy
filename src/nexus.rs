@@ -1,3 +1,7 @@
+// =-=-=-=-= nexus.rs =-=-=-=-=
+// A NEXUS file is a standardised phylogenetic data format
+// We parse a subset of NEXUS to allow us to load phylolingistic data
+
 use std::collections::HashMap;
 
 #[derive(Debug)]
