@@ -241,8 +241,8 @@ impl Move for TreeLocalMove {
             h_ord.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
             let (h1, h2, h3) = (h_ord[0].0, h_ord[1].0, h_ord[2].0);
 
-            let base: f64 = 2 * (2.0).ln();
-            let scale = f64::E * base.powf(PriorDist::Uniform {low: 0.0, high: 1.0}.draw(engine) - 0.5);
+            let lambda: f64 = 2 * (2.0).ln();
+            let scale = f64::E.powf(lambda * (PriorDist::Uniform {low: 0.0, high: 1.0}.draw(engine) - 0.5));
 
             let mut dists_star = vec![0.0, 0.0, 0.0]; 
             dists_star[h1] = dists[h1] * scale;
