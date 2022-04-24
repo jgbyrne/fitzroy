@@ -326,7 +326,7 @@ impl Move for TreeLocalMove {
 
         MoveResult {
             log_prior_likelihood_delta: config.tree.log_prior_likelihood(params) - cur_log_prior_likelihood,
-            log_hastings_ratio: hastings,
+            log_hastings_ratio: hastings.ln(),
             damage,
             revert: Box::new(revert),
         }
