@@ -311,7 +311,7 @@ impl Move for TreeLocalMove {
                 tree.nodes[u].rchild = a_b_c[h3];
 
                 // hastings ratio
-                if u_dist < c_dist { 1.0 / 3.0 } else { 1.0 }
+                if u_dist < c_dist { (1.0 / 3.0) * ratio } else { ratio }
             }
         };
         tree.update();
