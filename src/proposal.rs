@@ -839,15 +839,15 @@ impl Move for ABRVShapeMove {
         let proposal = PriorDist::Normal { mean: cur_abrv_shape, sigma: nudge };
         let new_abrv_shape = proposal.draw(engine);
 
-        let n_edges = 2 * config.tree.data.num_tips() - 2;
-        params.traits.abrv.rates = log_normal_categories(new_abrv_shape, n_edges);
-
         let revert = move |chain: &mut MCMC| {
             chain.params.traits.abrv.shape = cur_abrv_shape;
             chain.params.traits.abrv.rates = cur_abrv_rates;
         };
 
         let log_prior_likelihood_delta = if new_abrv_shape > 0.0 {
+            let n_edges = 2 * config.tree.data.num_tips() - 2;
+            params.traits.abrv.rates = log_normal_categories(new_abrv_shape, n_edges);
+
             let old = config.traits.abrv.shape.log_density(cur_abrv_shape);
             let new = config.traits.abrv.shape.log_density(new_abrv_shape);
             new - old
